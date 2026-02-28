@@ -574,11 +574,8 @@ export default function RoomPage() {
                 <div className="mt-3 space-y-2">
                   {roomState.characters.map((c) => (
                     <div key={c.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
-                      <img src={c.imageUrl} className="h-4 w-4 rounded-sm object-cover" alt="" />
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-black uppercase truncate text-foreground">{c.name}</p>
-                        <p className="text-[7px] font-bold text-muted truncate uppercase">{c.userName}</p>
-                      </div>
+                      <img src={c.imageUrl} className="h-4 w-4 rounded-sm object-cover shrink-0" alt="" />
+                      <p className="text-[9px] font-black uppercase truncate text-foreground min-w-0">{c.name}</p>
                     </div>
                   ))}
                   {roomState.characters.length === 0 && (
@@ -586,6 +583,20 @@ export default function RoomPage() {
                   )}
                 </div>
               </div>
+
+              {roomState.outfits.length > 0 && (
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Active Wardrobe</p>
+                  <div className="mt-3 space-y-2">
+                    {roomState.outfits.map((o) => (
+                      <div key={o.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
+                        <img src={o.imageUrl} className="h-4 w-4 rounded-sm object-cover shrink-0" alt="" />
+                        <p className="text-[9px] font-black uppercase truncate text-foreground min-w-0">{o.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           </div>
           <div className="p-4 border-t border-border">
