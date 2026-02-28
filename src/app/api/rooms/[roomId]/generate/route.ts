@@ -18,11 +18,17 @@ async function runGeneration(
   if (!room) return;
 
   const characterUrls = room.characters.map((c) => c.imageUrl);
+  const outfitUrls = room.outfits.map((o) => o.imageUrl);
+  const hasOutfits = outfitUrls.length > 0;
 
-  const defaultImagePrompt =
-    characterUrls.length === 1
-      ? "Place the character into the scene"
-      : "Place all characters into the scene";
+  const defaultImagePrompt = (() => {
+    if (characterUrls.length === 1 && !hasOutfits)
+      return "Place the character into the scene";
+    if (characterUrls.length === 1 && hasOutfits)
+      return "Place the character into the scene wearing the provided outfit";
+    if (!hasOutfits) return "Place all characters into the scene";
+    return "Place all characters into the scene wearing the provided outfits";
+  })();
   const defaultVideoPrompt = "they both walk up the stairs slowly";
 
   setGeneration(roomId, {
@@ -35,7 +41,7 @@ async function runGeneration(
       const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
         input: {
           prompt: imagePrompt || defaultImagePrompt,
-          image_urls: [...characterUrls, sceneUrl],
+          image_urls: [...characterUrls, ...outfitUrls, sceneUrl],
           aspect_ratio: "16:9",
           output_format: "png",
           resolution: "1K",

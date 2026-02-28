@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const files = formData.getAll("images") as File[];
+    const outfitFiles = formData.getAll("outfits") as File[];
     const sceneImageUrl = formData.get("sceneImageUrl") as string | null;
     const customPrompt = formData.get("prompt") as string | null;
 
@@ -26,17 +27,26 @@ export async function POST(req: NextRequest) {
     const uploadedUrls = await Promise.all(
       files.map((f) => fal.storage.upload(f)),
     );
+    const outfitUrls = await Promise.all(
+      outfitFiles.map((f) => fal.storage.upload(f)),
+    );
 
+    const hasOutfits = outfitUrls.length > 0;
     const prompt =
       customPrompt ||
-      (files.length === 1
-        ? "Place the character into the scene"
-        : "Place all characters into the scene");
+      (() => {
+        if (files.length === 1 && !hasOutfits)
+          return "Place the character into the scene";
+        if (files.length === 1 && hasOutfits)
+          return "Place the character into the scene wearing the provided outfit";
+        if (!hasOutfits) return "Place all characters into the scene";
+        return "Place all characters into the scene wearing the provided outfits";
+      })();
 
     const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
       input: {
         prompt,
-        image_urls: [...uploadedUrls, sceneImageUrl],
+        image_urls: [...uploadedUrls, ...outfitUrls, sceneImageUrl],
         aspect_ratio: "16:9",
         output_format: "png",
         resolution: "1K",

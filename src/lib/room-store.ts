@@ -8,6 +8,14 @@ export interface RoomCharacter {
   userName: string;
 }
 
+export interface RoomOutfit {
+  id: string;
+  name: string;
+  imageUrl: string;
+  userId: string;
+  userName: string;
+}
+
 export interface PipelineStatus {
   imageDone: boolean;
   videoDone: boolean;
@@ -31,6 +39,7 @@ interface Room {
   id: string;
   members: Map<string, { id: string; name: string }>;
   characters: RoomCharacter[];
+  outfits: RoomOutfit[];
   generation: RoomGeneration | null;
   listeners: Set<Listener>;
 }
@@ -46,6 +55,7 @@ export function createRoom(): string {
     id,
     members: new Map(),
     characters: [],
+    outfits: [],
     generation: null,
     listeners: new Set(),
   });
@@ -105,6 +115,33 @@ export function removeCharacter(
   broadcast(roomId);
 }
 
+export function addOutfit(roomId: string, outfit: RoomOutfit) {
+  const room = rooms.get(roomId);
+  if (!room) return false;
+  if (
+    room.outfits.some(
+      (o) => o.id === outfit.id && o.userId === outfit.userId,
+    )
+  )
+    return true;
+  room.outfits.push(outfit);
+  broadcast(roomId);
+  return true;
+}
+
+export function removeOutfit(
+  roomId: string,
+  outfitId: string,
+  userId: string,
+) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  room.outfits = room.outfits.filter(
+    (o) => !(o.id === outfitId && o.userId === userId),
+  );
+  broadcast(roomId);
+}
+
 export function setGeneration(
   roomId: string,
   generation: RoomGeneration | null,
@@ -157,6 +194,7 @@ export function serializeRoom(room: Room) {
     id: room.id,
     members: Array.from(room.members.values()),
     characters: room.characters,
+    outfits: room.outfits,
     generation: room.generation,
   };
 }

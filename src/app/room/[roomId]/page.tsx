@@ -7,6 +7,10 @@ import {
   getAllCharacters,
   type SavedCharacter,
 } from "@/lib/character-store";
+import {
+  getAllOutfits,
+  type SavedOutfit,
+} from "@/lib/outfit-store";
 import type { SerializedRoom } from "@/lib/room-store";
 
 const SCENE_IMAGES = [
@@ -21,6 +25,11 @@ interface LocalChar {
   url: string;
 }
 
+interface LocalOutfit {
+  outfit: SavedOutfit;
+  url: string;
+}
+
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const router = useRouter();
@@ -31,7 +40,9 @@ export default function RoomPage() {
   const [notFound, setNotFound] = useState(false);
 
   const [localChars, setLocalChars] = useState<LocalChar[]>([]);
+  const [localOutfits, setLocalOutfits] = useState<LocalOutfit[]>([]);
   const [pendingChars, setPendingChars] = useState<Set<string>>(new Set());
+  const [pendingOutfits, setPendingOutfits] = useState<Set<string>>(new Set());
 
   const [promptMode, setPromptMode] = useState<"auto" | "manual">("auto");
   const [imagePrompt, setImagePrompt] = useState("");
@@ -53,11 +64,32 @@ export default function RoomPage() {
     };
   }, [user]);
 
+  // Load local outfits
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getAllOutfits(user.id).then((outfits) => {
+      if (cancelled) return;
+      setLocalOutfits(
+        outfits.map((o) => ({ outfit: o, url: URL.createObjectURL(o.blob) })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   useEffect(() => {
     return () => {
       localChars.forEach((c) => URL.revokeObjectURL(c.url));
     };
   }, [localChars]);
+
+  useEffect(() => {
+    return () => {
+      localOutfits.forEach((o) => URL.revokeObjectURL(o.url));
+    };
+  }, [localOutfits]);
 
   // SSE connection
   useEffect(() => {
@@ -123,6 +155,43 @@ export default function RoomPage() {
     [user, roomState, roomId],
   );
 
+  const toggleOutfit = useCallback(
+    async (outfit: SavedOutfit) => {
+      if (!user || !roomState) return;
+
+      const inRoom = roomState.outfits.some(
+        (o) => o.id === outfit.id && o.userId === user.id,
+      );
+
+      setPendingOutfits((prev) => new Set(prev).add(outfit.id));
+
+      try {
+        const formData = new FormData();
+        if (inRoom) {
+          formData.append("action", "remove");
+          formData.append("outfitId", outfit.id);
+        } else {
+          formData.append("action", "add");
+          formData.append("outfitId", outfit.id);
+          formData.append("outfitName", outfit.name);
+          formData.append("image", outfit.blob);
+        }
+
+        await fetch(`/api/rooms/${roomId}/outfits`, {
+          method: "POST",
+          body: formData,
+        });
+      } finally {
+        setPendingOutfits((prev) => {
+          const next = new Set(prev);
+          next.delete(outfit.id);
+          return next;
+        });
+      }
+    },
+    [user, roomState, roomId],
+  );
+
   const generate = useCallback(async () => {
     const resolvedImagePrompt =
       promptMode === "manual" && imagePrompt.trim()
@@ -177,10 +246,15 @@ export default function RoomPage() {
   const canGenerate = roomState.characters.length >= 1 && isIdle;
 
   const charCount = roomState.characters.length;
-  const autoImagePrompt =
-    charCount === 1
-      ? "Place the character into the scene"
-      : "Place all characters into the scene";
+  const hasOutfits = roomState.outfits.length > 0;
+  const autoImagePrompt = (() => {
+    if (charCount === 1 && !hasOutfits)
+      return "Place the character into the scene";
+    if (charCount === 1 && hasOutfits)
+      return "Place the character into the scene wearing the provided outfit";
+    if (!hasOutfits) return "Place all characters into the scene";
+    return "Place all characters into the scene wearing the provided outfits";
+  })();
 
   const stageLabel = (() => {
     switch (gen?.stage) {
@@ -307,34 +381,143 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Room characters */}
-        {isIdle && !isDone && roomState.characters.length > 0 && (
+        {/* Your outfits */}
+        {isIdle && !isDone && (
           <div className="space-y-3">
-            <p className="text-xs font-medium text-zinc-500">In This Room</p>
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-              {roomState.characters.map((c) => (
-                <div
-                  key={`${c.userId}-${c.id}`}
-                  className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60"
-                >
-                  <div className="aspect-square overflow-hidden bg-black">
-                    <img
-                      src={c.imageUrl}
-                      alt={c.name}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <div className="px-2 py-1.5">
-                    <p className="truncate text-xs text-zinc-200">{c.name}</p>
-                    <p className="truncate text-[10px] text-zinc-500">
-                      {c.userName}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="text-xs font-medium text-zinc-500">Your Outfits</p>
+            {localOutfits.length === 0 ? (
+              <p className="py-4 text-center text-sm text-zinc-600">
+                No outfits. Add some on the Wardrobe page.
+              </p>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                {localOutfits.map(({ outfit, url }) => {
+                  const inRoom = roomState.outfits.some(
+                    (o) => o.id === outfit.id && o.userId === user.id,
+                  );
+                  const pending = pendingOutfits.has(outfit.id);
+                  return (
+                    <button
+                      key={outfit.id}
+                      onClick={() => toggleOutfit(outfit)}
+                      disabled={pending}
+                      className={`relative overflow-hidden rounded-xl border-2 transition-all ${
+                        inRoom
+                          ? "border-amber-400 ring-2 ring-amber-400/20"
+                          : "border-zinc-800 hover:border-zinc-600"
+                      } ${pending ? "opacity-50" : ""}`}
+                    >
+                      <div className="aspect-square overflow-hidden bg-black">
+                        <img
+                          src={url}
+                          alt={outfit.name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="bg-zinc-900 px-1.5 py-1">
+                        <p className="truncate text-[10px] text-zinc-300">
+                          {outfit.name}
+                        </p>
+                      </div>
+                      {inRoom && (
+                        <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400">
+                          <svg
+                            className="h-2.5 w-2.5 text-black"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      {pending && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
+
+        {/* In this room */}
+        {isIdle &&
+          !isDone &&
+          (roomState.characters.length > 0 ||
+            roomState.outfits.length > 0) && (
+            <div className="space-y-4">
+              <p className="text-xs font-medium text-zinc-500">In This Room</p>
+
+              {roomState.characters.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-zinc-600">Characters</p>
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                    {roomState.characters.map((c) => (
+                      <div
+                        key={`char-${c.userId}-${c.id}`}
+                        className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60"
+                      >
+                        <div className="aspect-square overflow-hidden bg-black">
+                          <img
+                            src={c.imageUrl}
+                            alt={c.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="px-2 py-1.5">
+                          <p className="truncate text-xs text-zinc-200">
+                            {c.name}
+                          </p>
+                          <p className="truncate text-[10px] text-zinc-500">
+                            {c.userName}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {roomState.outfits.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-zinc-600">Outfits</p>
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                    {roomState.outfits.map((o) => (
+                      <div
+                        key={`outfit-${o.userId}-${o.id}`}
+                        className="overflow-hidden rounded-xl border border-amber-900/40 bg-zinc-900/60"
+                      >
+                        <div className="aspect-square overflow-hidden bg-black">
+                          <img
+                            src={o.imageUrl}
+                            alt={o.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="px-2 py-1.5">
+                          <p className="truncate text-xs text-zinc-200">
+                            {o.name}
+                          </p>
+                          <p className="truncate text-[10px] text-zinc-500">
+                            {o.userName}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         {/* Prompts */}
         {isIdle && !isDone && roomState.characters.length > 0 && (
