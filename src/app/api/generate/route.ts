@@ -8,10 +8,11 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const files = formData.getAll("images") as File[];
     const sceneImageUrl = formData.get("sceneImageUrl") as string | null;
+    const customPrompt = formData.get("prompt") as string | null;
 
-    if (files.length < 2) {
+    if (files.length < 1) {
       return NextResponse.json(
-        { error: "Two character images are required" },
+        { error: "At least one character image is required" },
         { status: 400 },
       );
     }
@@ -26,10 +27,17 @@ export async function POST(req: NextRequest) {
       files.map((f) => fal.storage.upload(f)),
     );
 
+    const prompt =
+      customPrompt ||
+      (files.length === 1
+        ? "Place the character into the scene"
+        : "Place all characters into the scene");
+
     const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
       input: {
-        prompt: "Place both characters into the scene",
+        prompt,
         image_urls: [...uploadedUrls, sceneImageUrl],
+        aspect_ratio: "16:9",
         output_format: "png",
         resolution: "1K",
       },

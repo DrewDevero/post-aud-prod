@@ -5,7 +5,7 @@ fal.config({ credentials: process.env.FAL_KEY! });
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageUrl } = await req.json();
+    const { imageUrl, prompt } = await req.json();
     if (!imageUrl) {
       return NextResponse.json(
         { error: "No image URL provided" },
@@ -17,8 +17,7 @@ export async function POST(req: NextRequest) {
       "xai/grok-imagine-video/image-to-video",
       {
         input: {
-          prompt:
-            "they both walk up the stairs slowly",
+          prompt: prompt || "they both walk up the stairs slowly",
           image_url: imageUrl,
           duration: 6,
           resolution: "720p",

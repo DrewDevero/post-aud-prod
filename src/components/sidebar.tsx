@@ -1,0 +1,110 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useUser } from "@/hooks/use-user";
+import { COOKIE_NAME } from "@/lib/auth";
+
+const NAV_ITEMS = [
+  {
+    href: "/",
+    label: "Scene Placer",
+    icon: (
+      <svg
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+        />
+      </svg>
+    ),
+  },
+  {
+    href: "/crew",
+    label: "Character Crew",
+    icon: (
+      <svg
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+        />
+      </svg>
+    ),
+  },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const user = useUser();
+
+  const logout = () => {
+    document.cookie = `${COOKIE_NAME}=; path=/; max-age=0`;
+    router.push("/login");
+  };
+
+  return (
+    <aside className="flex h-dvh w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
+      <div className="px-5 py-5">
+        <h2 className="text-sm font-bold tracking-tight text-white">
+          Scene Placer
+        </h2>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1 px-3">
+        {NAV_ITEMS.map((item) => {
+          const active =
+            item.href === "/"
+              ? pathname === "/" || pathname.startsWith("/room")
+              : pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                active
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {user && (
+        <div className="border-t border-zinc-800 px-3 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-white">
+              {user.name.slice(-1)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-zinc-200">{user.name}</p>
+              <button
+                onClick={logout}
+                className="text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                Switch user
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+}
