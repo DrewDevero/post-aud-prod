@@ -1,9 +1,10 @@
-import { fal } from "@fal-ai/client";
 import { NextRequest, NextResponse } from "next/server";
+import { generateImageFromFiles } from "@/lib/gemini";
 
-fal.config({ credentials: process.env.FAL_KEY! });
+const PREFIX = "[api/generate]";
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
   try {
     const formData = await req.formData();
     const files = formData.getAll("images") as File[];
@@ -11,27 +12,31 @@ export async function POST(req: NextRequest) {
     const sceneImageUrl = formData.get("sceneImageUrl") as string | null;
     const customPrompt = formData.get("prompt") as string | null;
 
+    console.log(PREFIX, "POST request:", {
+      characterFiles: files.length,
+      fileSizes: files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+      outfitFiles: outfitFiles.length,
+      outfitSizes: outfitFiles.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+      sceneImageUrl,
+      customPrompt,
+    });
+
     if (files.length < 1) {
+      console.log(PREFIX, "rejected: no character images");
       return NextResponse.json(
         { error: "At least one character image is required" },
         { status: 400 },
       );
     }
     if (!sceneImageUrl) {
+      console.log(PREFIX, "rejected: no scene image URL");
       return NextResponse.json(
         { error: "Scene image URL is required" },
         { status: 400 },
       );
     }
 
-    const uploadedUrls = await Promise.all(
-      files.map((f) => fal.storage.upload(f)),
-    );
-    const outfitUrls = await Promise.all(
-      outfitFiles.map((f) => fal.storage.upload(f)),
-    );
-
-    const hasOutfits = outfitUrls.length > 0;
+    const hasOutfits = outfitFiles.length > 0;
     const prompt =
       customPrompt ||
       (() => {
@@ -43,19 +48,20 @@ export async function POST(req: NextRequest) {
         return "Place all characters into the scene wearing the provided outfits";
       })();
 
-    const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
-      input: {
-        prompt,
-        image_urls: [...uploadedUrls, ...outfitUrls, sceneImageUrl],
-        aspect_ratio: "16:9",
-        output_format: "png",
-        resolution: "1K",
-      },
+    console.log(PREFIX, `resolved prompt: "${prompt}"`);
+
+    const imageUrl = await generateImageFromFiles({
+      characterFiles: files,
+      outfitFiles,
+      sceneImageUrl,
+      prompt,
     });
 
-    return NextResponse.json(result.data);
+    console.log(PREFIX, `success in ${Date.now() - t0}ms → ${imageUrl}`);
+    return NextResponse.json({ images: [{ url: imageUrl }] });
   } catch (err) {
-    console.error("Generate error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(PREFIX, `FAILED after ${Date.now() - t0}ms:`, msg, err);
     return NextResponse.json(
       { error: "Failed to generate image" },
       { status: 500 },
