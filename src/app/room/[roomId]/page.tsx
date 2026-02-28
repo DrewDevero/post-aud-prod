@@ -13,11 +13,7 @@ import {
 } from "@/lib/outfit-store";
 import type { SerializedRoom } from "@/lib/room-store";
 import { InviteModal } from "@/components/invite-modal";
-
-const SCENE_IMAGES = [
-  "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
-  "https://v3b.fal.media/files/b/0a904ff6/zh54kzzHSHF5K9G1LlTVb_nY4Pvu3d.png",
-];
+import { GENRES, getGenreById } from "@/lib/genres";
 
 const DEFAULT_VIDEO_PROMPT = "they both walk up the stairs slowly";
 
@@ -50,6 +46,8 @@ export default function RoomPage() {
   const [videoPrompt, setVideoPrompt] = useState("");
   const [copied, setCopied] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [genreOpen, setGenreOpen] = useState(false);
+  const [selectedGenreId, setSelectedGenreId] = useState(GENRES[0]?.id ?? "noir");
 
   // Load local characters
   useEffect(() => {
@@ -210,9 +208,10 @@ export default function RoomPage() {
       body: JSON.stringify({
         imagePrompt: resolvedImagePrompt,
         videoPrompt: resolvedVideoPrompt,
+        genreId: selectedGenreId,
       }),
     });
-  }, [roomId, promptMode, imagePrompt, videoPrompt]);
+  }, [roomId, promptMode, imagePrompt, videoPrompt, selectedGenreId]);
 
   const resetGeneration = useCallback(async () => {
     await fetch(`/api/rooms/${roomId}/generate`, { method: "DELETE" });
@@ -416,7 +415,7 @@ export default function RoomPage() {
                   {gen.pipelines.map((p, i) => (
                     <div key={i} className="relative aspect-video bg-surface overflow-hidden border border-border/50">
                       <img
-                        src={p.imageUrl || SCENE_IMAGES[i]}
+                        src={p.imageUrl || (getGenreById(selectedGenreId)?.scenes[i] ?? "")}
                         className={`h-full w-full object-cover transition-opacity duration-500 ${!p.imageUrl ? "opacity-20" : "opacity-60"}`}
                         alt=""
                       />
@@ -463,6 +462,37 @@ export default function RoomPage() {
           <div className="h-48 shrink-0 border-t border-border bg-background p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-6">
+                <div className="relative">
+                  <button
+                    onClick={() => setGenreOpen(!genreOpen)}
+                    className="flex items-center gap-2 rounded border border-border bg-surface px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-muted hover:text-foreground hover:border-muted transition-colors"
+                  >
+                    <span className="text-muted/70">Genre</span>
+                    <span className="text-foreground">{getGenreById(selectedGenreId)?.name ?? selectedGenreId}</span>
+                    <svg className={`h-3 w-3 transition-transform ${genreOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {genreOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setGenreOpen(false)} />
+                      <div className="absolute left-0 top-full mt-1 z-50 min-w-[120px] rounded border border-border bg-background shadow-xl py-1">
+                        {GENRES.map((g) => (
+                          <button
+                            key={g.id}
+                            onClick={() => {
+                              setSelectedGenreId(g.id);
+                              setGenreOpen(false);
+                            }}
+                            className={`block w-full px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedGenreId === g.id ? "bg-accent/20 text-accent" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                          >
+                            {g.name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Prompt Engine</span>
                   <div className="flex rounded-sm bg-surface p-0.5 border border-border">
