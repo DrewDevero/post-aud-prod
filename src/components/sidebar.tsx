@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useUser } from "@/hooks/use-user";
@@ -73,6 +73,22 @@ export function Sidebar() {
   const router = useRouter();
   const user = useUser();
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Initial load from storage
+    const stored = localStorage.getItem("lastRoomId");
+    if (stored) setActiveRoomId(stored);
+  }, []);
+
+  useEffect(() => {
+    const match = pathname.match(/\/room\/([^/]+)/);
+    if (match) {
+      const roomId = match[1];
+      setActiveRoomId(roomId);
+      localStorage.setItem("lastRoomId", roomId);
+    }
+  }, [pathname]);
 
   const logout = () => {
     document.cookie = `${COOKIE_NAME}=; path=/; max-age=0`;
@@ -90,6 +106,7 @@ export function Sidebar() {
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2">
           {NAV_ITEMS.map((item) => {
+            const href = item.href === "/" && activeRoomId ? `/room/${activeRoomId}` : item.href;
             const active =
               item.href === "/"
                 ? pathname === "/" || pathname.startsWith("/room")
@@ -97,10 +114,10 @@ export function Sidebar() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 className={`flex items-center gap-2.5 rounded px-3 py-2 text-[13px] font-medium transition-colors ${active
-                    ? "bg-surface text-accent"
-                    : "text-muted hover:bg-surface-hover hover:text-foreground"
+                  ? "bg-surface text-accent"
+                  : "text-muted hover:bg-surface-hover hover:text-foreground"
                   }`}
               >
                 {item.icon}
