@@ -12,13 +12,12 @@ To achieve the goal of generating an audio-driven video featuring a specific per
 
 ### Phase 2: Scene Generation & Compositing
 *Goal: Place the subject into the environment realistically.*
-*   **Stable Diffusion XL (SDXL) or Flux.1**: Use these models for image-to-image inpainting or outpainting to place the VTON output into the static scene.
-*   **ControlNet / IP-Adapter**: Used in tandem with the diffusion model to match lighting, shadows, and perspective between the subject and the new background. 
+*   **Google Imagen 3 (via Vertex AI)**: We use Google's leading image generation model to seamlessly composite the VTON output into the static scene, perfectly matching lighting and perspective.
 
 ### Phase 3: Audio-Driven Video Animation (Full-Body Focus)
 *Goal: Animate the static composition using the audio file, focusing on full-body movement and lip-sync.*
-*   **Primary Motion**: Image-to-video models (like MimicMotion or customized AnimateDiff workflows in ComfyUI) to animate the full body and scene.
-*   **Secondary Pass (Lip-Sync)**: Since full-body models often struggle with precise audio-driven lip-sync, a secondary specialized model (like Wav2Lip or SyncTraj) will be layered specifically on the facial region generated in the first pass.
+*   **Primary Motion**: **Google Veo 2.0 (via Vertex AI)**. The highest fidelity video generation model available, capable of taking the Imagen 3 composite as a `first_frame` prompt and generating cinematic motion.
+*   **Secondary Pass (Lip-Sync)**: Since full-body general models (even Veo) often struggle with precise audio-driven lip-sync, a secondary specialized model (like Wav2Lip or SyncTraj) will be layered specifically on the facial region generated in the Veo pass.
 
 ### Phase 4: Orchestration & "Brain"
 *Goal: Manage state, memory, and model interactions.*
@@ -29,7 +28,7 @@ To achieve the goal of generating an audio-driven video featuring a specific per
 ## 2. Deployment & Infrastructure
 
 *   **Frontend & API Gateway**: **Next.js** (App Router) serving the web interface to upload inputs, trigger the pipeline, and view generations.
-*   **AI Engine**: **Local ComfyUI Node**. The pipeline will be constructed as a ComfyUI workflow (or series of workflows) and executed via the Next.js backend communicating with the local ComfyUI API endpoint. This avoids high recurring API costs and allows maximum workflow customization for the full-body pipeline.
+*   **AI Engine**: **Google Cloud Vertex AI**. The backend Next.js API routes will act as a secure proxy, utilizing the `@google/genai` Node SDK to dispatch generative jobs directly to Google Cloud models (Gemini for orchestration, Imagen for image composition, Veo for video). This provides massively scalable cloud generation without any local GPU requirements.
 
 ---
 

@@ -52,11 +52,11 @@ const AssetCard = ({ title, icon: Icon, description, accept, file, onFileSelect 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [logProgress, setLogProgress] = useState(0);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [assets, setAssets] = useState<any>({
     subject: null,
     apparel: null,
     environment: null,
-    audio: null,
   });
 
   const handleFileSelect = (key: string, file: File) => {
@@ -76,20 +76,22 @@ export default function Home() {
       if (assets.subject) formData.append("subject", assets.subject);
       if (assets.apparel) formData.append("apparel", assets.apparel);
       if (assets.environment) formData.append("environment", assets.environment);
-      if (assets.audio) formData.append("audio", assets.audio);
 
       const res = await fetch("/api/orchestrate", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
-      console.log("Orchestration initialized:", data);
+      console.log("Orchestration finished:", data);
 
-      setTimeout(() => {
-        setIsGenerating(false);
-        setLogProgress(0);
-        alert(`Next.js API route reached sucessfully! Check console.\nJob ID: ${data.jobId}`);
-      }, 5500);
+      setIsGenerating(false);
+      setLogProgress(0);
+
+      if (data.videoUrl) {
+        setVideoUrl(data.videoUrl);
+      } else {
+        alert(`Generation Failed or timed out.\nStatus: ${data.status}`);
+      }
 
     } catch (err) {
       console.error(err);
@@ -121,46 +123,47 @@ export default function Home() {
             Synthesize Reality.
           </h1>
           <p className="text-xl text-zinc-400 max-w-2xl mx-auto font-light leading-relaxed">
-            Upload your assets to craft full-body, audio-driven video. Managed by Gemini, rendered in ComfyUI.
+            Upload your assets to craft full-body, cinematic video. Managed by Gemini, rendered by Google Vertex AI.
           </p>
         </motion.div>
 
         {/* Asset Upload Grid */}
-        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           <AssetCard title="Subject" icon={ImageIcon} description="Base image of the person" accept="image/*" file={assets.subject} onFileSelect={(f: File) => handleFileSelect('subject', f)} />
           <AssetCard title="Apparel" icon={Shirt} description="Target clothing (VTON)" accept="image/*" file={assets.apparel} onFileSelect={(f: File) => handleFileSelect('apparel', f)} />
           <AssetCard title="Environment" icon={Film} description="Background scene image" accept="image/*" file={assets.environment} onFileSelect={(f: File) => handleFileSelect('environment', f)} />
-          <AssetCard title="Audio Track" icon={Music} description="Voice or ambient sound (.wav)" accept="audio/*,video/*" file={assets.audio} onFileSelect={(f: File) => handleFileSelect('audio', f)} />
         </div>
 
         {/* Action Button */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          disabled={isGenerating}
-          onClick={handleGenerate}
-          className={cn(
-            "group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white rounded-full overflow-hidden transition-all duration-300 shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] hover:shadow-[0_0_60px_-15px_rgba(99,102,241,0.7)]",
-            isGenerating ? "bg-zinc-800 cursor-wait shadow-none hover:shadow-none" : "bg-zinc-100 text-zinc-900"
-          )}
-        >
-          {!isGenerating && <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-20 transition-opacity" />}
-
-          <span className="relative flex items-center">
-            {isGenerating ? (
-              <>
-                <Wand2 className="w-5 h-5 mr-3 animate-spin text-zinc-400" />
-                <span className="text-zinc-300">Initializing Pipeline...</span>
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-5 h-5 mr-3 text-indigo-600" />
-                Generate Sequence
-                <ArrowRight className="w-5 h-5 ml-2 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-indigo-600" />
-              </>
+        {!videoUrl && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            disabled={isGenerating}
+            onClick={handleGenerate}
+            className={cn(
+              "group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white rounded-full overflow-hidden transition-all duration-300 shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] hover:shadow-[0_0_60px_-15px_rgba(99,102,241,0.7)]",
+              isGenerating ? "bg-zinc-800 cursor-wait shadow-none hover:shadow-none" : "bg-zinc-100 text-zinc-900"
             )}
-          </span>
-        </motion.button>
+          >
+            {!isGenerating && <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-20 transition-opacity" />}
+
+            <span className="relative flex items-center">
+              {isGenerating ? (
+                <>
+                  <Wand2 className="w-5 h-5 mr-3 animate-spin text-zinc-400" />
+                  <span className="text-zinc-300">Initializing Pipeline...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-5 h-5 mr-3 text-indigo-600" />
+                  Generate Sequence
+                  <ArrowRight className="w-5 h-5 ml-2 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-indigo-600" />
+                </>
+              )}
+            </span>
+          </motion.button>
+        )}
 
         {/* Pseudo-timeline / Status */}
         {isGenerating && (
@@ -204,9 +207,9 @@ export default function Home() {
                   className="flex text-zinc-400 items-start"
                 >
                   <span className="w-24 text-zinc-600 pt-0.5">[00:00:04]</span>
-                  <span className="text-purple-400 mr-3 pt-0.5">NODE</span>
+                  <span className="text-purple-400 mr-3 pt-0.5">VERTEX</span>
                   <span className="flex items-center">
-                    Dispatching VTON task to local ComfyUI worker
+                    Dispatching rendering job to Google Cloud Veo 2.0
                     <span className="ml-2 flex space-x-1">
                       <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -216,6 +219,38 @@ export default function Home() {
                 </motion.div>
               )}
             </div>
+          </motion.div>
+        )}
+
+        {/* Finished Video / Result */}
+        {videoUrl && !isGenerating && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-4xl mt-12 mb-20 flex flex-col items-center"
+          >
+            <div className="relative w-full aspect-video rounded-3xl overflow-hidden border border-zinc-700/50 shadow-[0_20px_60px_-15px_rgba(99,102,241,0.4)] group">
+              <div className="absolute inset-0 bg-zinc-900/20 backdrop-blur-sm -z-10" />
+              <video
+                src={videoUrl}
+                controls
+                autoPlay
+                loop
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                setVideoUrl(null);
+                setAssets({ subject: null, apparel: null, environment: null });
+              }}
+              className="mt-8 px-6 py-3 rounded-full border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300 text-sm font-medium"
+            >
+              Start New Sequence
+            </motion.button>
           </motion.div>
         )}
 

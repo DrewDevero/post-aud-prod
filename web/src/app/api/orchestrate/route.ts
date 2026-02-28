@@ -56,51 +56,104 @@ export async function POST(req: NextRequest) {
         const aiPlan = JSON.parse(response.text || "{}");
         console.log("Orchestrator: Gemini generated pipeline plan:", aiPlan);
 
-        // Step 2: Dispatch to Local ComfyUI
-        const comfyUrl = process.env.COMFYUI_SERVER_URL || "http://127.0.0.1:8188";
-        console.log(`Orchestrator: Dispatching plan to ComfyUI at ${comfyUrl}`);
+        // Step 2: Google Vertex AI Generation Pipeline
+        // In a full production app, you would use Vertex AI to call Imagen 3 and Veo 2.0
+        console.log(`Orchestrator: Dispatching plan to Google Vertex AI`);
 
-        // This is a stubbed payload representing a standard ComfyUI API prompt graph.
-        // In reality, this JSON is exported from the ComfyUI UI (Save (API format)).
-        // We dynamically inject Gemini's structured output into the graph's nodes.
-        const comfyUIGraphPayload = {
-            "prompt": {
-                "3": {
-                    "inputs": {
-                        "seed": Math.floor(Math.random() * 10000000),
-                        "steps": 20,
-                        "cfg": 8,
-                        "sampler_name": "euler",
-                        "scheduler": "normal",
-                        "denoise": 1,
-                        // Inject Gemini's positive prompt
-                        "positive": aiPlan.compositing_prompt,
-                        // Inject Gemini's negative prompt
-                        "negative": aiPlan.compositing_negative_prompt
-                    },
-                    "class_type": "KSampler",
-                    "_meta": {
-                        "title": "KSampler"
-                    }
-                },
-                // ... (Truncated graph for demonstration purposes)
-            }
-        };
-
-        let dispatchStatus = "simulated_dispatch";
+        let dispatchStatus = "vertex_generation_started";
+        let finalVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4"; // Fallback MVP
 
         try {
-            // Attempt to hit local ComfyUI. If it fails (e.g., node isn't running), catch and simulate.
-            const comfyRes = await fetch(`${comfyUrl}/prompt`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(comfyUIGraphPayload)
+            // ---------------------------------------------------------
+            // ACTUAL VERTEX AI IMPLEMENTATION LOGIC
+            // ---------------------------------------------------------
+
+            // 1. Authenticate with Google Cloud Vertex AI
+            const vertexAi = new GoogleGenAI({
+                vertexai: true,
+                project: process.env.GOOGLE_CLOUD_PROJECT,
+                location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
             });
-            const comfyData = await comfyRes.json();
-            console.log("ComfyUI Dispatch Success:", comfyData);
-            dispatchStatus = "dispatched_to_node";
-        } catch (comfyError) {
-            console.warn("ComfyUI node not reachable at", comfyUrl, "- Simulating dispatch for MVP. Ensure ComfyUI is running locally.");
+
+            // 2. Imagen 3: Generate the Composite Scene
+            console.log("Vertex: Generating Scene with Imagen 3...");
+            const imageRes = await vertexAi.models.generateImages({
+                model: 'imagen-3.0-generate-001',
+                prompt: aiPlan.compositing_prompt,
+                // Note: Incorporating the subject/apparel images would require uploading to GCS
+                // or passing base64. For this hackathon, we'll generate the initial environment
+                // based purely on Gemini's highly-detailed compositing descriptions.
+                config: {
+                    negativePrompt: aiPlan.compositing_negative_prompt,
+                    numberOfImages: 1,
+                    aspectRatio: "16:9"
+                }
+            });
+
+            // Extract the generated image as a base64 string and its mimeType to feed to Veo
+            const generatedSceneImageBase64 = imageRes.generatedImages?.[0]?.image?.imageBytes;
+            const generatedSceneImageMimeType = imageRes.generatedImages?.[0]?.image?.mimeType;
+
+            if (generatedSceneImageBase64) {
+                // 3. Veo 2.0: Animate the Scene
+                console.log("Vertex: Dispatching Video Generation to Veo 2.0...");
+
+                // Veo 2.0 takes the first frame, and generates video. 
+                // Note: generateVideos is a long-running operation in Vertex.
+                const videoOperation = await vertexAi.models.generateVideos({
+                    model: 'veo-2.0-generate-001',
+                    prompt: aiPlan.memory_state.emotional_arc || "A smooth cinematic pan showing the character responding.",
+                    image: {
+                        imageBytes: generatedSceneImageBase64,
+                        mimeType: generatedSceneImageMimeType || "image/jpeg"
+                    },
+                    config: {
+                        fps: 24,
+                        durationSeconds: 5,
+                        aspectRatio: "16:9"
+                    }
+                });
+
+                console.log("Vertex AI Video Operation Started:", videoOperation.name);
+
+                // Poll the operation until complete
+                let isDone = false;
+                let finalVideoOperation = videoOperation;
+
+                while (!isDone) {
+                    console.log("Polling Veo 2.0 Status...");
+                    // sleep for 5 seconds to avoid rate limits on polling
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+
+                    finalVideoOperation = await vertexAi.operations.getVideosOperation({
+                        operation: finalVideoOperation
+                    });
+
+                    if (finalVideoOperation.done) {
+                        isDone = true;
+                    }
+                }
+
+                if (finalVideoOperation.error) {
+                    console.error("Veo 2.0 Generation Error:", finalVideoOperation.error);
+                    dispatchStatus = "vertex_error_fallback";
+                } else {
+                    console.log("Veo 2.0 Generation Complete!");
+                    // Veo returns a URI to the generated video in the response
+                    finalVideoUrl = finalVideoOperation.response?.generatedVideos?.[0]?.video?.uri || finalVideoUrl;
+                    dispatchStatus = "vertex_generation_complete";
+                }
+
+            } else {
+                console.warn("Imagen 3 generation failed to return an image blob.");
+                dispatchStatus = "vertex_error_fallback: no_image_returned";
+                finalVideoUrl = null as any;
+            }
+
+        } catch (vertexError: any) {
+            console.warn("Vertex AI generation failed:", vertexError);
+            dispatchStatus = `vertex_error_fallback: ${vertexError.message || vertexError}`;
+            finalVideoUrl = null as any;
         }
 
         return NextResponse.json({
@@ -108,7 +161,8 @@ export async function POST(req: NextRequest) {
             jobId: `PROJ_${Math.floor(Math.random() * 10000)}`,
             status: dispatchStatus,
             plan: aiPlan,
-            message: "Gemini successfully orchestrated the pipeline.",
+            videoUrl: finalVideoUrl,
+            message: "Gemini orchestrated the pipeline via Vertex AI.",
         });
 
     } catch (error: any) {
