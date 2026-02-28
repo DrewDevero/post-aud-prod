@@ -64,6 +64,7 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
+    setVideoUrl(null); // Clear previous video on new generation attempt
     setIsGenerating(true);
     setLogProgress(1); // Start progressive log Reveal
 

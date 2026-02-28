@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         console.log(`Orchestrator: Dispatching plan to Google Vertex AI`);
 
         let dispatchStatus = "vertex_generation_started";
-        let finalVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4"; // Fallback MVP
+        let finalVideoUrl: string | null = null;
 
         try {
             // ---------------------------------------------------------
@@ -136,24 +136,45 @@ export async function POST(req: NextRequest) {
 
                 if (finalVideoOperation.error) {
                     console.error("Veo 2.0 Generation Error:", finalVideoOperation.error);
-                    dispatchStatus = "vertex_error_fallback";
+                    dispatchStatus = `vertex_error_fallback: ${JSON.stringify(finalVideoOperation.error)}`;
+                    finalVideoUrl = null;
                 } else {
                     console.log("Veo 2.0 Generation Complete!");
-                    // Veo returns a URI to the generated video in the response
-                    finalVideoUrl = finalVideoOperation.response?.generatedVideos?.[0]?.video?.uri || finalVideoUrl;
+                    // Debugging: Log full response structure to terminal
+                    console.dir(finalVideoOperation.response, { depth: null });
+
+                    const videoObj = finalVideoOperation.response?.generatedVideos?.[0]?.video;
+                    const gcsUri = videoObj?.uri;
+                    const videoBytes = videoObj?.videoBytes;
+                    const mimeType = videoObj?.mimeType || "video/mp4";
+
+                    if (videoBytes) {
+                        // If model returned raw bytes, use data URI
+                        finalVideoUrl = `data:${mimeType};base64,${videoBytes}`;
+                        console.log("Using base64 video data from Veo response.");
+                    } else if (gcsUri && gcsUri.startsWith("gs://")) {
+                        // Convert gs:// bucket/object to public https link
+                        const parts = gcsUri.replace("gs://", "").split("/");
+                        const bucket = parts[0];
+                        const object = parts.slice(1).join("/");
+                        finalVideoUrl = `https://storage.googleapis.com/${bucket}/${object}`;
+                        console.log("Converted GCS URI to playable URL:", finalVideoUrl);
+                    } else {
+                        finalVideoUrl = gcsUri || null;
+                    }
                     dispatchStatus = "vertex_generation_complete";
                 }
 
             } else {
                 console.warn("Imagen 3 generation failed to return an image blob.");
                 dispatchStatus = "vertex_error_fallback: no_image_returned";
-                finalVideoUrl = null as any;
+                finalVideoUrl = null;
             }
 
         } catch (vertexError: any) {
             console.warn("Vertex AI generation failed:", vertexError);
             dispatchStatus = `vertex_error_fallback: ${vertexError.message || vertexError}`;
-            finalVideoUrl = null as any;
+            finalVideoUrl = null;
         }
 
         return NextResponse.json({
