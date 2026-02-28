@@ -1,5 +1,9 @@
 import { GoogleGenAI, createUserContent } from "@google/genai";
 import { fal } from "@fal-ai/client";
+import { tmpdir } from "os";
+import { join } from "path";
+import { readFile, unlink } from "fs/promises";
+import { randomUUID } from "crypto";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
 fal.config({ credentials: process.env.FAL_KEY! });
@@ -198,4 +202,105 @@ async function callGeminiAndUpload(
 
   log(`callGeminiAndUpload: uploaded to fal in ${uploadMs}ms → ${url}`);
   return url;
+}
+
+/**
+ * Generate a video from an image URL using Gemini Veo 3.1.
+ * Returns a fal.storage URL of the resulting video.
+ */
+export async function generateVideoFromImageUrl(opts: {
+  imageUrl: string;
+  prompt: string;
+}): Promise<string> {
+  log("generateVideoFromImageUrl: starting", {
+    imageUrl: opts.imageUrl,
+    prompt: opts.prompt,
+  });
+
+  const t0 = Date.now();
+
+  log("generateVideoFromImageUrl: fetching source image");
+  const imageRes = await fetch(opts.imageUrl);
+  if (!imageRes.ok) {
+    logError("generateVideoFromImageUrl: image fetch failed", {
+      status: imageRes.status,
+      statusText: imageRes.statusText,
+    });
+    throw new Error(`Failed to fetch source image: ${imageRes.status}`);
+  }
+  const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+  const imageMimeType = imageRes.headers.get("content-type") || "image/png";
+  log(`generateVideoFromImageUrl: image fetched, ${imageMimeType}, ${imageBuffer.byteLength} bytes`);
+
+  const model = "veo-3.1-generate-preview";
+  log("generateVideoFromImageUrl: calling generateVideos", { model });
+
+  let operation;
+  try {
+    operation = await ai.models.generateVideos({
+      model,
+      prompt: opts.prompt,
+      image: {
+        imageBytes: imageBuffer.toString("base64"),
+        mimeType: imageMimeType,
+      },
+    });
+  } catch (err) {
+    logError("generateVideoFromImageUrl: generateVideos threw", err);
+    throw err;
+  }
+  log("generateVideoFromImageUrl: operation started, polling for completion");
+
+  let pollCount = 0;
+  while (!operation.done) {
+    pollCount++;
+    const elapsed = Date.now() - t0;
+    log(`generateVideoFromImageUrl: poll #${pollCount}, elapsed=${elapsed}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    try {
+      operation = await ai.operations.getVideosOperation({ operation });
+    } catch (err) {
+      logError(`generateVideoFromImageUrl: poll #${pollCount} threw`, err);
+      throw err;
+    }
+  }
+
+  const genMs = Date.now() - t0;
+  log(`generateVideoFromImageUrl: operation complete after ${genMs}ms, ${pollCount} polls`);
+
+  const generatedVideos = operation.response?.generatedVideos;
+  if (!generatedVideos?.length) {
+    logError("generateVideoFromImageUrl: no videos in response", JSON.stringify(operation.response, null, 2).slice(0, 2000));
+    throw new Error("Veo 3.1 returned no generated videos");
+  }
+
+  const video = generatedVideos[0].video;
+  if (!video) {
+    logError("generateVideoFromImageUrl: video file reference is undefined");
+    throw new Error("Veo 3.1 returned a generated video entry with no file reference");
+  }
+  log("generateVideoFromImageUrl: downloading video to temp file");
+
+  const tmpPath = join(tmpdir(), `veo-${randomUUID()}.mp4`);
+  try {
+    await ai.files.download({
+      file: video,
+      downloadPath: tmpPath,
+    });
+
+    const videoBuffer = await readFile(tmpPath);
+    log(`generateVideoFromImageUrl: video downloaded, ${videoBuffer.byteLength} bytes, uploading to fal`);
+
+    const t1 = Date.now();
+    const videoFile = new File([videoBuffer], "generated.mp4", {
+      type: "video/mp4",
+    });
+    const url = await fal.storage.upload(videoFile);
+    const uploadMs = Date.now() - t1;
+
+    log(`generateVideoFromImageUrl: uploaded to fal in ${uploadMs}ms → ${url}`);
+    return url;
+  } finally {
+    await unlink(tmpPath).catch(() => {});
+  }
 }

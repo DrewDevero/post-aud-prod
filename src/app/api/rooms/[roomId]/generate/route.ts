@@ -1,7 +1,7 @@
 import { fal } from "@fal-ai/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getRoom, setGeneration, updatePipeline } from "@/lib/room-store";
-import { generateImageFromUrls } from "@/lib/gemini";
+import { generateImageFromUrls, generateVideoFromImageUrl } from "@/lib/gemini";
 
 fal.config({ credentials: process.env.FAL_KEY! });
 
@@ -90,31 +90,17 @@ async function runGeneration(
       SCENE_IMAGES.map(() => ({ imageDone: true, videoDone: false })),
   });
 
-  console.log(PREFIX, `[stage=generating-videos] starting ${imageUrls.length} parallel video generations`);
+  console.log(PREFIX, `[stage=generating-videos] starting ${imageUrls.length} parallel video generations (Veo 3.1)`);
   const tVid = Date.now();
   const videoUrls = await Promise.all(
     imageUrls.map(async (imageUrl, i) => {
       const tScene = Date.now();
-      console.log(PREFIX, `[video ${i + 1}/${imageUrls.length}] starting, imageUrl=${imageUrl}`);
+      console.log(PREFIX, `[video ${i + 1}/${imageUrls.length}] starting via Veo 3.1, imageUrl=${imageUrl}`);
       try {
-        const result = await fal.subscribe(
-          "fal-ai/veo3.1/fast/image-to-video",
-          {
-            input: {
-              prompt: resolvedVideoPrompt,
-              image_url: imageUrl,
-              aspect_ratio: "16:9",
-              duration: "4s",
-              resolution: "720p",
-            },
-          },
-        );
-        console.log(PREFIX, `[video ${i + 1}/${imageUrls.length}] fal response:`, JSON.stringify(result.data).slice(0, 500));
-        const url = (result.data as { video?: { url: string } }).video?.url;
-        if (!url) {
-          console.error(PREFIX, `[video ${i + 1}/${imageUrls.length}] no video URL in response`, JSON.stringify(result.data));
-          throw new Error(`No video returned for scene ${i + 1}`);
-        }
+        const url = await generateVideoFromImageUrl({
+          imageUrl,
+          prompt: resolvedVideoPrompt,
+        });
         console.log(PREFIX, `[video ${i + 1}/${imageUrls.length}] done in ${Date.now() - tScene}ms → ${url}`);
         updatePipeline(roomId, i, { videoDone: true, videoUrl: url });
         return url;
