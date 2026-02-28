@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@/hooks/use-user";
 import {
@@ -48,6 +48,8 @@ export default function RoomPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [genreOpen, setGenreOpen] = useState(false);
   const [selectedGenreId, setSelectedGenreId] = useState(GENRES[0]?.id ?? "noir");
+  const [chatInput, setChatInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Load local characters
   useEffect(() => {
@@ -217,6 +219,22 @@ export default function RoomPage() {
     await fetch(`/api/rooms/${roomId}/generate`, { method: "DELETE" });
   }, [roomId]);
 
+  const sendMessage = useCallback(async () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatInput("");
+    await fetch(`/api/rooms/${roomId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  }, [roomId, chatInput]);
+
+  const messages = roomState?.messages ?? [];
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
   if (notFound) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-background p-8 text-foreground group">
@@ -291,6 +309,12 @@ export default function RoomPage() {
             <span className="text-[10px] font-bold uppercase tracking-tight text-muted">
               {connected ? "Live" : "Offline"}
             </span>
+            <button
+              onClick={() => router.push("/")}
+              className="ml-2 text-[9px] font-bold uppercase tracking-wider text-muted hover:text-foreground transition-colors"
+            >
+              Close Session
+            </button>
           </div>
         </div>
 
@@ -602,22 +626,14 @@ export default function RoomPage() {
               <div>
                 <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Active Cast</p>
                 <div className="mt-3 space-y-2">
-                  {roomState.members.map((m) => (
-                    <div key={m.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
-                      <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[8px] font-black ${m.id === user.id ? "bg-accent text-background" : "bg-muted text-surface"
-                        }`}>
-                        {m.name.slice(0, 1).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-black uppercase truncate text-foreground">{m.name}</p>
-                        <p className="text-[7px] font-bold text-muted truncate uppercase">
-                          {m.id === user.id ? "Director" : "Collaborator"}
-                        </p>
-                      </div>
+                  {roomState.characters.map((c) => (
+                    <div key={`${c.id}-${c.userId}`} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
+                      <img src={c.imageUrl} className="h-4 w-4 rounded-sm object-cover shrink-0" alt="" />
+                      <p className="text-[9px] font-black uppercase truncate text-foreground min-w-0">{c.name}</p>
                     </div>
                   ))}
-                  {roomState.members.length === 0 && (
-                    <p className="text-[8px] text-muted italic text-center py-2">No Active Session</p>
+                  {roomState.characters.length === 0 && (
+                    <p className="text-[8px] text-muted italic">Empty Session</p>
                   )}
                 </div>
               </div>
@@ -635,6 +651,51 @@ export default function RoomPage() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-border/50 pt-4">
+                <p className="text-[8px] font-black uppercase tracking-tight text-muted/50 mb-2">Chat</p>
+                <div className="flex flex-col gap-2">
+                  <div
+                    className="h-28 overflow-y-auto rounded border border-border bg-surface/30 p-2 space-y-1.5"
+                  >
+                    {messages.map((m) => (
+                      <div key={m.id} className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[8px] font-bold uppercase ${m.userId === user.id ? "text-accent" : "text-muted"}`}
+                          >
+                            {m.userName}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-foreground break-words pl-0">{m.text}</p>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      sendMessage();
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Message..."
+                      className="flex-1 min-w-0 rounded border border-border bg-surface px-2.5 py-1.5 text-[10px] text-foreground placeholder:text-muted/50 outline-none focus:border-accent/40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim()}
+                      className="rounded border border-accent bg-accent px-3 py-1.5 text-[9px] font-black uppercase text-background hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Send
+                    </button>
+                  </form>
+                </div>
+              </div>
             </section>
           </div>
           <div className="p-4 border-t border-border">
