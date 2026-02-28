@@ -12,6 +12,7 @@ import {
   type SavedOutfit,
 } from "@/lib/outfit-store";
 import type { SerializedRoom } from "@/lib/room-store";
+import { InviteModal } from "@/components/invite-modal";
 
 const SCENE_IMAGES = [
   "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
@@ -48,6 +49,7 @@ export default function RoomPage() {
   const [imagePrompt, setImagePrompt] = useState("");
   const [videoPrompt, setVideoPrompt] = useState("");
   const [copied, setCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Load local characters
   useEffect(() => {
@@ -306,6 +308,15 @@ export default function RoomPage() {
               </div>
             ))}
           </div>
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-muted hover:text-accent hover:border-accent/30 transition-colors"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+            Invite
+          </button>
         </div>
       </header>
 
@@ -585,6 +596,8 @@ export default function RoomPage() {
           </div>
         </aside>
       </div>
+
+      <InviteModal roomId={roomId} open={inviteOpen} onClose={() => setInviteOpen(false)} />
 
       {/* Tailwind animation keyframes injected via style tag for simplicity in this file */}
       <style jsx global>{`
