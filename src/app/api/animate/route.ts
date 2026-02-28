@@ -14,12 +14,13 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await fal.subscribe(
-      "xai/grok-imagine-video/image-to-video",
+      "fal-ai/veo3.1/fast/image-to-video",
       {
         input: {
           prompt: prompt || "they both walk up the stairs slowly",
           image_url: imageUrl,
-          duration: 6,
+          aspect_ratio: "16:9",
+          duration: "4s",
           resolution: "720p",
         },
       },

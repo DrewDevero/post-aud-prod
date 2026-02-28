@@ -65,12 +65,13 @@ async function runGeneration(
   const videoUrls = await Promise.all(
     imageUrls.map(async (imageUrl, i) => {
       const result = await fal.subscribe(
-        "xai/grok-imagine-video/image-to-video",
+        "fal-ai/veo3.1/fast/image-to-video",
         {
           input: {
             prompt: videoPrompt || defaultVideoPrompt,
             image_url: imageUrl,
-            duration: 6,
+            aspect_ratio: "16:9",
+            duration: "4s",
             resolution: "720p",
           },
         },
