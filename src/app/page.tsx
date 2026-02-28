@@ -78,7 +78,7 @@ export default function Home() {
                 type="text"
                 value={joinCode}
                 onChange={(e) => {
-                  setJoinCode(e.target.value.toUpperCase());
+                  setJoinCode(e.target.value);
                   setJoinError(null);
                 }}
                 onKeyDown={(e) => e.key === "Enter" && joinRoom()}
@@ -95,8 +95,8 @@ export default function Home() {
               onClick={joinRoom}
               disabled={!joinCode.trim()}
               className={`w-full rounded border border-border py-3 text-[11px] font-black uppercase tracking-[0.1em] transition-all ${joinCode.trim()
-                  ? "bg-surface text-foreground hover:bg-surface-hover hover:border-accent/30"
-                  : "cursor-not-allowed text-muted/30"
+                ? "bg-surface text-foreground hover:bg-surface-hover hover:border-accent/30"
+                : "cursor-not-allowed text-muted/30"
                 }`}
             >
               Join Sequence
