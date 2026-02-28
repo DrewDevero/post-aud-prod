@@ -572,17 +572,22 @@ export default function RoomPage() {
               <div>
                 <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Active Cast</p>
                 <div className="mt-3 space-y-2">
-                  {roomState.characters.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
-                      <img src={c.imageUrl} className="h-4 w-4 rounded-sm object-cover" alt="" />
+                  {roomState.members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
+                      <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[8px] font-black ${m.id === user.id ? "bg-accent text-background" : "bg-muted text-surface"
+                        }`}>
+                        {m.name.slice(0, 1).toUpperCase()}
+                      </div>
                       <div className="min-w-0">
-                        <p className="text-[9px] font-black uppercase truncate text-foreground">{c.name}</p>
-                        <p className="text-[7px] font-bold text-muted truncate uppercase">{c.userName}</p>
+                        <p className="text-[9px] font-black uppercase truncate text-foreground">{m.name}</p>
+                        <p className="text-[7px] font-bold text-muted truncate uppercase">
+                          {m.id === user.id ? "Director" : "Collaborator"}
+                        </p>
                       </div>
                     </div>
                   ))}
-                  {roomState.characters.length === 0 && (
-                    <p className="text-[8px] text-muted italic">Empty Session</p>
+                  {roomState.members.length === 0 && (
+                    <p className="text-[8px] text-muted italic text-center py-2">No Active Session</p>
                   )}
                 </div>
               </div>
