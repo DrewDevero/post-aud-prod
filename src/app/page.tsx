@@ -2,13 +2,16 @@
 
 import { useState, useRef, useCallback } from "react";
 
-const SCENE_IMAGE_URL =
-  "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png";
+const SCENE_IMAGES = [
+  "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
+  "https://v3b.fal.media/files/b/0a904ff6/zh54kzzHSHF5K9G1LlTVb_nY4Pvu3d.png",
+];
 
 type Stage =
   | "upload"
-  | "generating-image"
-  | "generating-video"
+  | "generating-images"
+  | "generating-videos"
+  | "merging"
   | "result";
 
 interface CharacterSlot {
@@ -16,12 +19,28 @@ interface CharacterSlot {
   preview: string;
 }
 
+interface PipelineStatus {
+  imageDone: boolean;
+  videoDone: boolean;
+  imageUrl?: string;
+  videoUrl?: string;
+}
+
 export default function Home() {
-  const fileInputRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
-  const [characters, setCharacters] = useState<(CharacterSlot | null)[]>([null, null]);
+  const fileInputRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
+  const [characters, setCharacters] = useState<(CharacterSlot | null)[]>([
+    null,
+    null,
+  ]);
   const [stage, setStage] = useState<Stage>("upload");
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [pipelines, setPipelines] = useState<PipelineStatus[]>([
+    { imageDone: false, videoDone: false },
+    { imageDone: false, videoDone: false },
+  ]);
+  const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleFile = useCallback((index: number, file: File) => {
@@ -65,43 +84,90 @@ export default function Home() {
 
   const generate = useCallback(async () => {
     if (!characters[0] || !characters[1]) return;
-    setStage("generating-image");
+    setStage("generating-images");
     setError(null);
+    setPipelines([
+      { imageDone: false, videoDone: false },
+      { imageDone: false, videoDone: false },
+    ]);
 
     try {
-      const formData = new FormData();
-      formData.append("images", characters[0].file, "character1.png");
-      formData.append("images", characters[1].file, "character2.png");
+      const generateImage = async (sceneUrl: string, pipelineIdx: number) => {
+        const formData = new FormData();
+        formData.append("images", characters[0]!.file, "character1.png");
+        formData.append("images", characters[1]!.file, "character2.png");
+        formData.append("sceneImageUrl", sceneUrl);
 
-      const genRes = await fetch("/api/generate", {
-        method: "POST",
-        body: formData,
-      });
-      if (!genRes.ok) {
-        const body = await genRes.json().catch(() => null);
-        throw new Error(body?.error ?? "Failed to generate image");
-      }
-      const imageData = await genRes.json();
-      const imageUrl: string | undefined = imageData.images?.[0]?.url;
-      if (!imageUrl) throw new Error("No image was returned");
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error ?? `Failed to generate image for scene ${pipelineIdx + 1}`);
+        }
+        const data = await res.json();
+        const imageUrl: string | undefined = data.images?.[0]?.url;
+        if (!imageUrl) throw new Error(`No image returned for scene ${pipelineIdx + 1}`);
 
-      setGeneratedImageUrl(imageUrl);
-      setStage("generating-video");
+        setPipelines((prev) => {
+          const next = [...prev];
+          next[pipelineIdx] = { ...next[pipelineIdx], imageDone: true, imageUrl };
+          return next;
+        });
 
-      const animRes = await fetch("/api/animate", {
+        return imageUrl;
+      };
+
+      const imageUrls = await Promise.all(
+        SCENE_IMAGES.map((url, i) => generateImage(url, i)),
+      );
+
+      setStage("generating-videos");
+
+      const animateImage = async (imageUrl: string, pipelineIdx: number) => {
+        const res = await fetch("/api/animate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error ?? `Failed to generate video for scene ${pipelineIdx + 1}`);
+        }
+        const data = await res.json();
+        const videoUrl: string | undefined = data.video?.url;
+        if (!videoUrl) throw new Error(`No video returned for scene ${pipelineIdx + 1}`);
+
+        setPipelines((prev) => {
+          const next = [...prev];
+          next[pipelineIdx] = { ...next[pipelineIdx], videoDone: true, videoUrl };
+          return next;
+        });
+
+        return videoUrl;
+      };
+
+      const videoUrls = await Promise.all(
+        imageUrls.map((url, i) => animateImage(url, i)),
+      );
+
+      setStage("merging");
+
+      const mergeRes = await fetch("/api/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl }),
+        body: JSON.stringify({ videoUrls }),
       });
-      if (!animRes.ok) {
-        const body = await animRes.json().catch(() => null);
-        throw new Error(body?.error ?? "Failed to generate video");
+      if (!mergeRes.ok) {
+        const body = await mergeRes.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to merge videos");
       }
-      const videoData = await animRes.json();
-      const vidUrl: string | undefined = videoData.video?.url;
-      if (!vidUrl) throw new Error("No video was returned");
+      const mergeData = await mergeRes.json();
+      const finalUrl: string | undefined = mergeData.video?.url;
+      if (!finalUrl) throw new Error("No merged video was returned");
 
-      setVideoUrl(vidUrl);
+      setMergedVideoUrl(finalUrl);
       setStage("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -114,14 +180,32 @@ export default function Home() {
       if (c?.preview) URL.revokeObjectURL(c.preview);
     });
     setCharacters([null, null]);
-    setGeneratedImageUrl(null);
-    setVideoUrl(null);
+    setPipelines([
+      { imageDone: false, videoDone: false },
+      { imageDone: false, videoDone: false },
+    ]);
+    setMergedVideoUrl(null);
     setError(null);
     setStage("upload");
   }, [characters]);
 
   const isGenerating =
-    stage === "generating-image" || stage === "generating-video";
+    stage === "generating-images" ||
+    stage === "generating-videos" ||
+    stage === "merging";
+
+  const stageLabel = (() => {
+    switch (stage) {
+      case "generating-images":
+        return "Placing characters in scenes\u2026";
+      case "generating-videos":
+        return "Animating scenes\u2026";
+      case "merging":
+        return "Merging clips\u2026";
+      default:
+        return "";
+    }
+  })();
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-zinc-950 p-6 text-white">
@@ -129,12 +213,11 @@ export default function Home() {
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight">Scene Placer</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Upload two characters, place them in the scene, and watch it come
-            alive
+            Upload two characters, place them in two scenes, and watch the
+            merged result
           </p>
         </div>
 
-        {/* Upload slots / Generating / Result */}
         {stage === "upload" && (
           <div className="grid grid-cols-2 gap-3">
             {[0, 1].map((i) => (
@@ -194,41 +277,75 @@ export default function Home() {
         )}
 
         {isGenerating && (
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black">
-            {stage === "generating-image" && (
-              <div className="flex h-full items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
-                  <p className="text-sm text-zinc-300">
-                    Placing characters in the scene&hellip;
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              {pipelines.map((p, i) => (
+                <div
+                  key={i}
+                  className="relative aspect-video overflow-hidden rounded-2xl border border-zinc-800 bg-black"
+                >
+                  {p.imageUrl ? (
+                    <img
+                      src={p.imageUrl}
+                      alt={`Scene ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <img
+                        src={SCENE_IMAGES[i]}
+                        alt={`Target scene ${i + 1}`}
+                        className="h-full w-full object-cover opacity-30"
+                      />
+                    </div>
+                  )}
+                  {!p.videoDone && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
+                        <p className="text-xs text-zinc-300">
+                          {!p.imageDone
+                            ? "Generating\u2026"
+                            : "Animating\u2026"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {p.videoDone && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <svg
+                        className="h-8 w-8 text-green-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </div>
+                  )}
+                  <p className="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+                    Scene {i + 1}
                   </p>
                 </div>
-              </div>
-            )}
-            {stage === "generating-video" && generatedImageUrl && (
-              <>
-                <img
-                  src={generatedImageUrl}
-                  alt="Generated scene"
-                  className="h-full w-full object-cover"
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
-                    <p className="text-sm text-zinc-300">
-                      Animating the scene&hellip;
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+
+            <div className="flex items-center justify-center gap-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
+              <p className="text-sm text-zinc-400">{stageLabel}</p>
+            </div>
           </div>
         )}
 
-        {stage === "result" && videoUrl && (
+        {stage === "result" && mergedVideoUrl && (
           <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black">
             <video
-              src={videoUrl}
+              src={mergedVideoUrl}
               autoPlay
               loop
               playsInline
@@ -238,31 +355,33 @@ export default function Home() {
           </div>
         )}
 
-        {/* Scene thumbnail */}
         {stage !== "result" && (
-          <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-            <img
-              src={SCENE_IMAGE_URL}
-              alt="Target scene"
-              className="h-16 w-16 rounded-lg object-cover"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-zinc-500">Target Scene</p>
-              <p className="text-sm text-zinc-300">
-                Both characters will be placed and animated here
-              </p>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-zinc-500">Target Scenes</p>
+            <div className="grid grid-cols-2 gap-3">
+              {SCENE_IMAGES.map((url, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-2"
+                >
+                  <img
+                    src={url}
+                    alt={`Target scene ${i + 1}`}
+                    className="h-14 w-14 rounded-lg object-cover"
+                  />
+                  <p className="text-xs text-zinc-400">Scene {i + 1}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Error banner */}
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex gap-3">
           {stage === "upload" && (
             <button
@@ -274,7 +393,7 @@ export default function Home() {
                   : "cursor-not-allowed bg-zinc-800 text-zinc-500"
               }`}
             >
-              Place Us in Scene
+              Place Us in Scenes
             </button>
           )}
 
@@ -283,9 +402,7 @@ export default function Home() {
               disabled
               className="flex-1 cursor-not-allowed rounded-xl bg-zinc-800 py-3 text-sm font-medium text-zinc-500"
             >
-              {stage === "generating-image"
-                ? "Placing in scene\u2026"
-                : "Animating\u2026"}
+              {stageLabel}
             </button>
           )}
 
