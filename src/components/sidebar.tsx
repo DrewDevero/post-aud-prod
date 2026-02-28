@@ -1,21 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useUser } from "@/hooks/use-user";
 import { COOKIE_NAME } from "@/lib/auth";
+import { FriendsPanel } from "@/components/friends-panel";
+import { NotificationBell } from "@/components/notification-bell";
 
 const NAV_ITEMS = [
   {
     href: "/",
-    label: "Scene Placer",
+    label: "Sequence",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -27,14 +30,14 @@ const NAV_ITEMS = [
   },
   {
     href: "/crew",
-    label: "Character Crew",
+    label: "Cast & Crew",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -49,11 +52,11 @@ const NAV_ITEMS = [
     label: "Wardrobe",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -69,6 +72,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const user = useUser();
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const logout = () => {
     document.cookie = `${COOKIE_NAME}=; path=/; max-age=0`;
@@ -76,54 +80,70 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-dvh w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-      <div className="px-5 py-5">
-        <h2 className="text-sm font-bold tracking-tight text-white">
-          Scene Placer
-        </h2>
-      </div>
+    <>
+      <aside className="flex h-dvh w-48 shrink-0 flex-col border-r border-border bg-background">
+        <div className="px-4 py-6">
+          <h2 className="text-xs font-black tracking-[0.2em] text-accent uppercase">
+            Studio
+          </h2>
+        </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV_ITEMS.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/" || pathname.startsWith("/room")
-              : pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-zinc-800 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {user && (
-        <div className="border-t border-zinc-800 px-3 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-white">
-              {user.name.slice(-1)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-zinc-200">{user.name}</p>
-              <button
-                onClick={logout}
-                className="text-xs text-zinc-500 hover:text-zinc-300"
+        <nav className="flex flex-1 flex-col gap-0.5 px-2">
+          {NAV_ITEMS.map((item) => {
+            const active =
+              item.href === "/"
+                ? pathname === "/" || pathname.startsWith("/room")
+                : pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-2.5 rounded px-3 py-2 text-[13px] font-medium transition-colors ${active
+                  ? "bg-surface text-accent"
+                  : "text-muted hover:bg-surface-hover hover:text-foreground"
+                  }`}
               >
-                Switch user
-              </button>
+                {item.icon}
+                {item.label}
+              </Link>
+            );
+          })}
+
+          <button
+            onClick={() => setFriendsOpen(true)}
+            className={`flex items-center gap-2.5 rounded px-3 py-2 text-[13px] font-medium transition-colors text-muted hover:bg-surface-hover hover:text-foreground ${friendsOpen ? "bg-surface text-accent" : ""}`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+            </svg>
+            Friends
+          </button>
+        </nav>
+
+        {user && (
+          <div className="border-t border-border px-2 py-4 space-y-3">
+            <div className="flex items-center justify-between px-2">
+              <NotificationBell />
+            </div>
+            <div className="flex items-center gap-3 px-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-surface border border-border text-[10px] font-bold text-foreground">
+                {user.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-foreground">{user.name}</p>
+                <button
+                  onClick={logout}
+                  className="text-[10px] text-muted hover:text-accent uppercase tracking-wider"
+                >
+                  Sign Out
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </aside>
+        )}
+      </aside>
+
+      <FriendsPanel open={friendsOpen} onClose={() => setFriendsOpen(false)} />
+    </>
   );
 }

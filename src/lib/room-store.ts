@@ -35,12 +35,21 @@ export interface RoomGeneration {
   error?: string;
 }
 
+export interface RoomMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: number;
+}
+
 interface Room {
   id: string;
   members: Map<string, { id: string; name: string }>;
   characters: RoomCharacter[];
   outfits: RoomOutfit[];
   generation: RoomGeneration | null;
+  messages: RoomMessage[];
   listeners: Set<Listener>;
 }
 
@@ -57,6 +66,7 @@ export function createRoom(): string {
     characters: [],
     outfits: [],
     generation: null,
+    messages: [],
     listeners: new Set(),
   });
   return id;
@@ -166,6 +176,27 @@ export function updatePipeline(
   broadcast(roomId);
 }
 
+export function addMessage(
+  roomId: string,
+  user: { id: string; name: string },
+  text: string,
+) {
+  const room = rooms.get(roomId);
+  if (!room) return false;
+  if (!room.messages) room.messages = [];
+  const msg: RoomMessage = {
+    id: crypto.randomUUID().slice(0, 8),
+    userId: user.id,
+    userName: user.name,
+    text: text.trim(),
+    createdAt: Date.now(),
+  };
+  if (!msg.text) return false;
+  room.messages.push(msg);
+  broadcast(roomId);
+  return true;
+}
+
 export function subscribe(roomId: string, listener: Listener) {
   const room = rooms.get(roomId);
   if (room) room.listeners.add(listener);
@@ -196,6 +227,7 @@ export function serializeRoom(room: Room) {
     characters: room.characters,
     outfits: room.outfits,
     generation: room.generation,
+    messages: room.messages ?? [],
   };
 }
 

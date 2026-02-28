@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@/hooks/use-user";
 import {
@@ -12,11 +12,8 @@ import {
   type SavedOutfit,
 } from "@/lib/outfit-store";
 import type { SerializedRoom } from "@/lib/room-store";
-
-const SCENE_IMAGES = [
-  "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
-  "https://v3b.fal.media/files/b/0a904ff6/zh54kzzHSHF5K9G1LlTVb_nY4Pvu3d.png",
-];
+import { InviteModal } from "@/components/invite-modal";
+import { GENRES, getGenreById } from "@/lib/genres";
 
 const DEFAULT_VIDEO_PROMPT = "they both walk up the stairs slowly";
 
@@ -48,6 +45,11 @@ export default function RoomPage() {
   const [imagePrompt, setImagePrompt] = useState("");
   const [videoPrompt, setVideoPrompt] = useState("");
   const [copied, setCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [genreOpen, setGenreOpen] = useState(false);
+  const [selectedGenreId, setSelectedGenreId] = useState(GENRES[0]?.id ?? "noir");
+  const [chatInput, setChatInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Load local characters
   useEffect(() => {
@@ -208,23 +210,40 @@ export default function RoomPage() {
       body: JSON.stringify({
         imagePrompt: resolvedImagePrompt,
         videoPrompt: resolvedVideoPrompt,
+        genreId: selectedGenreId,
       }),
     });
-  }, [roomId, promptMode, imagePrompt, videoPrompt]);
+  }, [roomId, promptMode, imagePrompt, videoPrompt, selectedGenreId]);
 
   const resetGeneration = useCallback(async () => {
     await fetch(`/api/rooms/${roomId}/generate`, { method: "DELETE" });
   }, [roomId]);
 
+  const sendMessage = useCallback(async () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatInput("");
+    await fetch(`/api/rooms/${roomId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  }, [roomId, chatInput]);
+
+  const messages = roomState?.messages ?? [];
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
   if (notFound) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center bg-zinc-950 p-8 text-white">
-        <p className="text-lg font-medium">Room not found</p>
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-background p-8 text-foreground group">
+        <p className="text-xs font-black tracking-widest uppercase text-red-500">Sequence Not Found</p>
         <button
           onClick={() => router.push("/")}
-          className="mt-4 rounded-lg bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700"
+          className="mt-6 rounded border border-border px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-surface transition-colors"
         >
-          Go home
+          Return to Studio
         </button>
       </div>
     );
@@ -232,8 +251,8 @@ export default function RoomPage() {
 
   if (!user || !roomState) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-zinc-950">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <div className="h-4 w-4 animate-spin rounded border-2 border-border border-t-accent" />
       </div>
     );
   }
@@ -259,494 +278,444 @@ export default function RoomPage() {
   const stageLabel = (() => {
     switch (gen?.stage) {
       case "generating-images":
-        return "Placing characters in scenes\u2026";
+        return "Rendering Frames...";
       case "generating-videos":
-        return "Animating scenes\u2026";
+        return "Processing Motion...";
       case "merging":
-        return "Merging clips\u2026";
+        return "Final Assembly...";
       default:
         return "";
     }
   })();
 
   return (
-    <div className="flex min-h-dvh flex-col bg-zinc-950 p-8 text-white">
-      <div className="mx-auto w-full max-w-2xl space-y-8">
-        {/* Room header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Room</h1>
-            <div className="mt-1 flex items-center gap-2">
-              <code className="rounded bg-zinc-800 px-2 py-0.5 text-sm text-zinc-300">
-                {roomId}
-              </code>
-              <button
-                onClick={copyRoomCode}
-                className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:text-white"
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            </div>
-          </div>
-
+    <div className="flex h-dvh flex-col bg-background text-foreground overflow-hidden">
+      {/* Header */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            {roomState.members.map((m) => (
-              <div
-                key={m.id}
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                  m.id === user.id
-                    ? "bg-white text-black"
-                    : "bg-zinc-700 text-white"
-                }`}
-                title={m.name}
-              >
-                {m.name.slice(-1)}
-              </div>
-            ))}
-            <div
-              className={`ml-1 h-2 w-2 rounded-full ${connected ? "bg-green-400" : "bg-zinc-600"}`}
-              title={connected ? "Connected" : "Disconnected"}
-            />
+            <span className="text-[10px] font-black uppercase tracking-widest text-muted">Sequence</span>
+            <code className="text-[11px] font-mono font-bold text-accent">{roomId}</code>
+            <button
+              onClick={copyRoomCode}
+              className="ml-1 text-[9px] font-bold uppercase tracking-tighter text-muted hover:text-foreground"
+            >
+              {copied ? "ID Copied" : "Copy ID"}
+            </button>
+          </div>
+          <div className="h-4 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <div className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500"}`} />
+            <span className="text-[10px] font-bold uppercase tracking-tight text-muted">
+              {connected ? "Live" : "Offline"}
+            </span>
+            <button
+              onClick={() => router.push("/")}
+              className="ml-2 text-[9px] font-bold uppercase tracking-wider text-muted hover:text-foreground transition-colors"
+            >
+              Close Session
+            </button>
           </div>
         </div>
 
-        {/* Your characters */}
-        {isIdle && !isDone && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-zinc-500">
-              Your Characters
-            </p>
-            {localChars.length === 0 ? (
-              <p className="py-4 text-center text-sm text-zinc-600">
-                No characters. Add some on the Character Crew page.
-              </p>
-            ) : (
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2">
+            {roomState.members.map((m) => (
+              <div
+                key={m.id}
+                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 border-surface text-[9px] font-black ${m.id === user.id ? "bg-accent text-background" : "bg-muted text-surface"
+                  }`}
+                title={m.name}
+              >
+                {m.name.slice(0, 1).toUpperCase()}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-muted hover:text-accent hover:border-accent/30 transition-colors"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+            Invite
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Pane - Assets */}
+        <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-background">
+          <div className="p-3 border-b border-border">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Asset Browser</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-6">
+            {/* Characters Section */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted/50">Cast</span>
+                <span className="text-[9px] font-mono text-accent">{localChars.length} items</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 {localChars.map(({ character, url }) => {
-                  const inRoom = roomState.characters.some(
-                    (c) =>
-                      c.id === character.id && c.userId === user.id,
-                  );
+                  const inRoom = roomState.characters.some(c => c.id === character.id && c.userId === user.id);
                   const pending = pendingChars.has(character.id);
                   return (
                     <button
                       key={character.id}
                       onClick={() => toggleCharacter(character)}
-                      disabled={pending}
-                      className={`relative overflow-hidden rounded-xl border-2 transition-all ${
-                        inRoom
-                          ? "border-white ring-2 ring-white/20"
-                          : "border-zinc-800 hover:border-zinc-600"
-                      } ${pending ? "opacity-50" : ""}`}
+                      disabled={pending || !isIdle}
+                      className={`group relative aspect-square overflow-hidden rounded border transition-all ${inRoom ? "border-accent ring-1 ring-accent/20" : "border-border hover:border-muted"
+                        } ${!isIdle ? "opacity-30 grayscale" : ""}`}
                     >
-                      <div className="aspect-square overflow-hidden bg-black">
-                        <img
-                          src={url}
-                          alt={character.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="bg-zinc-900 px-1.5 py-1">
-                        <p className="truncate text-[10px] text-zinc-300">
-                          {character.name}
-                        </p>
+                      <img src={url} alt={character.name} className="h-full w-full object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="truncate text-[8px] font-bold text-white uppercase">{character.name}</p>
                       </div>
                       {inRoom && (
-                        <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white">
-                          <svg
-                            className="h-2.5 w-2.5 text-black"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={3}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                      {pending && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
+                        <div className="absolute top-1 right-1 h-3 w-3 rounded-full bg-accent flex items-center justify-center">
+                          <svg className="h-2 w-2 text-background" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
                         </div>
                       )}
                     </button>
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
+            </section>
 
-        {/* Your outfits */}
-        {isIdle && !isDone && (
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-zinc-500">Your Outfits</p>
-            {localOutfits.length === 0 ? (
-              <p className="py-4 text-center text-sm text-zinc-600">
-                No outfits. Add some on the Wardrobe page.
-              </p>
-            ) : (
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+            {/* Outfits Section */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted/50">Wardrobe</span>
+                <span className="text-[9px] font-mono text-accent">{localOutfits.length} items</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
                 {localOutfits.map(({ outfit, url }) => {
-                  const inRoom = roomState.outfits.some(
-                    (o) => o.id === outfit.id && o.userId === user.id,
-                  );
+                  const inRoom = roomState.outfits.some(o => o.id === outfit.id && o.userId === user.id);
                   const pending = pendingOutfits.has(outfit.id);
                   return (
                     <button
                       key={outfit.id}
                       onClick={() => toggleOutfit(outfit)}
-                      disabled={pending}
-                      className={`relative overflow-hidden rounded-xl border-2 transition-all ${
-                        inRoom
-                          ? "border-amber-400 ring-2 ring-amber-400/20"
-                          : "border-zinc-800 hover:border-zinc-600"
-                      } ${pending ? "opacity-50" : ""}`}
+                      disabled={pending || !isIdle}
+                      className={`group relative aspect-[3/4] overflow-hidden rounded border transition-all ${inRoom ? "border-accent ring-1 ring-accent/20" : "border-border hover:border-muted"
+                        } ${!isIdle ? "opacity-30 grayscale" : ""}`}
                     >
-                      <div className="aspect-square overflow-hidden bg-black">
-                        <img
-                          src={url}
-                          alt={outfit.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="bg-zinc-900 px-1.5 py-1">
-                        <p className="truncate text-[10px] text-zinc-300">
-                          {outfit.name}
-                        </p>
-                      </div>
+                      <img src={url} alt={outfit.name} className="h-full w-full object-cover" />
                       {inRoom && (
-                        <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400">
-                          <svg
-                            className="h-2.5 w-2.5 text-black"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={3}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                      {pending && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
-                        </div>
+                        <div className="absolute inset-0 bg-accent/10 pointer-events-none" />
                       )}
                     </button>
                   );
                 })}
               </div>
-            )}
+            </section>
           </div>
-        )}
+        </aside>
 
-        {/* In this room */}
-        {isIdle &&
-          !isDone &&
-          (roomState.characters.length > 0 ||
-            roomState.outfits.length > 0) && (
-            <div className="space-y-4">
-              <p className="text-xs font-medium text-zinc-500">In This Room</p>
+        {/* Center Pane - Preview and Controls */}
+        <main className="flex flex-1 flex-col bg-surface overflow-hidden">
+          {/* Top - Viewport */}
+          <div className="flex-1 flex items-center justify-center p-6 bg-[#0a0a0a] relative">
+            <div className="max-w-4xl w-full aspect-video bg-background border border-border rounded shadow-2xl relative overflow-hidden flex items-center justify-center">
+              {/* Overlay labels */}
+              <div className="absolute top-4 left-4 flex items-center gap-2 z-10">
+                <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                <span className="text-[10px] font-mono font-bold tracking-tighter text-red-600">REC</span>
+              </div>
+              <div className="absolute top-4 right-4 text-[10px] font-mono font-bold text-muted  z-10 uppercase">
+                SCENE_PREVIEW_V1
+              </div>
 
-              {roomState.characters.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-zinc-600">Characters</p>
-                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                    {roomState.characters.map((c) => (
-                      <div
-                        key={`char-${c.userId}-${c.id}`}
-                        className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60"
-                      >
-                        <div className="aspect-square overflow-hidden bg-black">
-                          <img
-                            src={c.imageUrl}
-                            alt={c.name}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <div className="px-2 py-1.5">
-                          <p className="truncate text-xs text-zinc-200">
-                            {c.name}
-                          </p>
-                          <p className="truncate text-[10px] text-zinc-500">
-                            {c.userName}
-                          </p>
-                        </div>
+              {!isDone && !isGenerating && !hasError && (
+                <div className="text-center space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted/50 italic">No Media Rendered</p>
+                  <p className="text-[9px] text-muted uppercase tracking-widest">Select assets and click Re-Render</p>
+                </div>
+              )}
+
+              {isGenerating && gen && (
+                <div className="w-full h-full grid grid-cols-2 gap-1 p-1">
+                  {gen.pipelines.map((p, i) => (
+                    <div key={i} className="relative aspect-video bg-surface overflow-hidden border border-border/50">
+                      <img
+                        src={p.imageUrl || (getGenreById(selectedGenreId)?.scenes[i] ?? "")}
+                        className={`h-full w-full object-cover transition-opacity duration-500 ${!p.imageUrl ? "opacity-20" : "opacity-60"}`}
+                        alt=""
+                      />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
+                        {!p.videoDone && (
+                          <div className="w-full space-y-2 max-w-[120px]">
+                            <div className="relative h-1 w-full bg-border overflow-hidden rounded-full">
+                              <div className="absolute inset-0 bg-accent animate-[shimmer_2s_infinite]" />
+                            </div>
+                            <p className="text-[8px] font-black text-center uppercase tracking-widest text-accent">
+                              {!p.imageDone ? "Mapping" : "Animating"}
+                            </p>
+                          </div>
+                        )}
+                        {p.videoDone && <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Done</span>}
                       </div>
+                      <span className="absolute bottom-2 left-2 text-[8px] font-mono text-muted uppercase">S_{i + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isDone && gen?.mergedVideoUrl && (
+                <video
+                  src={gen.mergedVideoUrl}
+                  autoPlay
+                  loop
+                  playsInline
+                  controls
+                  className="h-full w-full object-contain"
+                />
+              )}
+
+              {hasError && (
+                <div className="p-8 text-center bg-red-950/20 border border-red-900/50 rounded">
+                  <p className="text-[11px] font-black text-red-500 uppercase tracking-widest">Render Process Failed</p>
+                  <p className="mt-2 text-[10px] text-red-400 font-medium">{gen?.error}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom - Controls Area */}
+          <div className="h-48 shrink-0 border-t border-border bg-background p-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <div className="flex items-center gap-6">
+                <div className="relative">
+                  <button
+                    onClick={() => setGenreOpen(!genreOpen)}
+                    className="flex items-center gap-2 rounded border border-border bg-surface px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-muted hover:text-foreground hover:border-muted transition-colors"
+                  >
+                    <span className="text-muted/70">Genre</span>
+                    <span className="text-foreground">{getGenreById(selectedGenreId)?.name ?? selectedGenreId}</span>
+                    <svg className={`h-3 w-3 transition-transform ${genreOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {genreOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setGenreOpen(false)} />
+                      <div className="absolute left-0 top-full mt-1 z-50 min-w-[120px] rounded border border-border bg-background shadow-xl py-1">
+                        {GENRES.map((g) => (
+                          <button
+                            key={g.id}
+                            onClick={() => {
+                              setSelectedGenreId(g.id);
+                              setGenreOpen(false);
+                            }}
+                            className={`block w-full px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedGenreId === g.id ? "bg-accent/20 text-accent" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                          >
+                            {g.name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Prompt Engine</span>
+                  <div className="flex rounded-sm bg-surface p-0.5 border border-border">
+                    {(["auto", "manual"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setPromptMode(mode)}
+                        className={`rounded-sm px-3 py-1 text-[9px] font-black uppercase tracking-widest transition-colors ${promptMode === mode ? "bg-accent text-background" : "text-muted hover:text-foreground"
+                          }`}
+                      >
+                        {mode}
+                      </button>
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="flex gap-2">
+                {isIdle && !isDone && (
+                  <button
+                    onClick={generate}
+                    disabled={!canGenerate}
+                    className={`h-8 px-6 rounded text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-lg ${canGenerate ? "bg-accent text-background hover:scale-105 active:scale-95" : "bg-surface text-muted cursor-not-allowed"
+                      }`}
+                  >
+                    Initialize Render
+                  </button>
+                )}
+                {(isDone || hasError) && (
+                  <button
+                    onClick={resetGeneration}
+                    className="h-8 px-6 rounded bg-foreground text-background text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white transition-all shadow-lg overflow-hidden relative"
+                  >
+                    Clear Cache & Re-Render
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1">
+              {promptMode === "auto" ? (
+                <div className="grid grid-cols-2 gap-4 h-full">
+                  <div className="space-y-1.5 opacity-60">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-muted/50">Instructional Basis</p>
+                    <div className="rounded border border-border bg-surface/50 p-2 text-[11px] font-medium text-muted font-mono h-20 overflow-y-auto">
+                      {autoImagePrompt}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 opacity-60">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-muted/50">Contextuals</p>
+                    <div className="rounded border border-border bg-surface/50 p-2 text-[11px] font-medium text-muted font-mono h-20 overflow-y-auto">
+                      {DEFAULT_VIDEO_PROMPT}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 h-full">
+                  <div className="space-y-1.5">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-muted/50">Custom Scene Props</label>
+                    <textarea
+                      value={imagePrompt}
+                      onChange={(e) => setImagePrompt(e.target.value)}
+                      placeholder={autoImagePrompt}
+                      className="w-full h-20 bg-surface border border-border rounded p-2 text-[11px] font-mono text-accent placeholder:text-muted/30 outline-none focus:border-accent/40 resize-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-muted/50">Kinetic Instructions</label>
+                    <textarea
+                      value={videoPrompt}
+                      onChange={(e) => setVideoPrompt(e.target.value)}
+                      placeholder={DEFAULT_VIDEO_PROMPT}
+                      className="w-full h-20 bg-surface border border-border rounded p-2 text-[11px] font-mono text-accent placeholder:text-muted/30 outline-none focus:border-accent/40 resize-none"
+                    />
+                  </div>
+                </div>
               )}
+            </div>
+          </div>
+        </main>
+
+        {/* Right Pane - Composition Details */}
+        <aside className="w-56 shrink-0 border-l border-border bg-background flex flex-col">
+          <div className="p-3 border-b border-border">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Session Info</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-8">
+            <section className="space-y-4">
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Composition Stats</p>
+                <div className="mt-2 space-y-2">
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span className="text-muted/70 uppercase">Total Scenes</span>
+                    <span className="text-accent">02</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span className="text-muted/70 uppercase">Resolution</span>
+                    <span className="text-foreground">1080P</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span className="text-muted/70 uppercase">Framerate</span>
+                    <span className="text-foreground">24 FPS</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Active Cast</p>
+                <div className="mt-3 space-y-2">
+                  {roomState.characters.map((c) => (
+                    <div key={`${c.id}-${c.userId}`} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
+                      <img src={c.imageUrl} className="h-4 w-4 rounded-sm object-cover shrink-0" alt="" />
+                      <p className="text-[9px] font-black uppercase truncate text-foreground min-w-0">{c.name}</p>
+                    </div>
+                  ))}
+                  {roomState.characters.length === 0 && (
+                    <p className="text-[8px] text-muted italic">Empty Session</p>
+                  )}
+                </div>
+              </div>
 
               {roomState.outfits.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-zinc-600">Outfits</p>
-                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-tight text-muted/50">Active Wardrobe</p>
+                  <div className="mt-3 space-y-2">
                     {roomState.outfits.map((o) => (
-                      <div
-                        key={`outfit-${o.userId}-${o.id}`}
-                        className="overflow-hidden rounded-xl border border-amber-900/40 bg-zinc-900/60"
-                      >
-                        <div className="aspect-square overflow-hidden bg-black">
-                          <img
-                            src={o.imageUrl}
-                            alt={o.name}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <div className="px-2 py-1.5">
-                          <p className="truncate text-xs text-zinc-200">
-                            {o.name}
-                          </p>
-                          <p className="truncate text-[10px] text-zinc-500">
-                            {o.userName}
-                          </p>
-                        </div>
+                      <div key={o.id} className="flex items-center gap-2 p-1.5 rounded bg-surface/30 border border-border/50">
+                        <img src={o.imageUrl} className="h-4 w-4 rounded-sm object-cover shrink-0" alt="" />
+                        <p className="text-[9px] font-black uppercase truncate text-foreground min-w-0">{o.name}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-        {/* Prompts */}
-        {isIdle && !isDone && roomState.characters.length > 0 && (
-          <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-zinc-500">Prompts</p>
-              <div className="flex rounded-lg bg-zinc-800 p-0.5">
-                {(["auto", "manual"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setPromptMode(mode)}
-                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                      promptMode === mode
-                        ? "bg-zinc-600 text-white"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
+              <div className="border-t border-border/50 pt-4">
+                <p className="text-[8px] font-black uppercase tracking-tight text-muted/50 mb-2">Chat</p>
+                <div className="flex flex-col gap-2">
+                  <div
+                    className="h-28 overflow-y-auto rounded border border-border bg-surface/30 p-2 space-y-1.5"
                   >
-                    {mode === "auto" ? "Auto" : "Manual"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {promptMode === "auto" ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="mb-1 text-[11px] font-medium text-zinc-500">
-                    Image prompt
-                  </p>
-                  <p className="rounded-lg bg-zinc-800/60 px-3 py-2 text-sm text-zinc-400">
-                    {autoImagePrompt}
-                  </p>
-                </div>
-                <div>
-                  <p className="mb-1 text-[11px] font-medium text-zinc-500">
-                    Video prompt
-                  </p>
-                  <p className="rounded-lg bg-zinc-800/60 px-3 py-2 text-sm text-zinc-400">
-                    {DEFAULT_VIDEO_PROMPT}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="room-image-prompt"
-                    className="mb-1 block text-[11px] font-medium text-zinc-500"
-                  >
-                    Image prompt
-                  </label>
-                  <textarea
-                    id="room-image-prompt"
-                    rows={2}
-                    value={imagePrompt}
-                    onChange={(e) => setImagePrompt(e.target.value)}
-                    placeholder={autoImagePrompt}
-                    className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="room-video-prompt"
-                    className="mb-1 block text-[11px] font-medium text-zinc-500"
-                  >
-                    Video prompt
-                  </label>
-                  <textarea
-                    id="room-video-prompt"
-                    rows={2}
-                    value={videoPrompt}
-                    onChange={(e) => setVideoPrompt(e.target.value)}
-                    placeholder={DEFAULT_VIDEO_PROMPT}
-                    className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-zinc-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Pipeline progress */}
-        {isGenerating && gen && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {gen.pipelines.map((p, i) => (
-                <div
-                  key={i}
-                  className="relative aspect-video overflow-hidden rounded-2xl border border-zinc-800 bg-black"
-                >
-                  {p.imageUrl ? (
-                    <img
-                      src={p.imageUrl}
-                      alt={`Scene ${i + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src={SCENE_IMAGES[i]}
-                      alt={`Target scene ${i + 1}`}
-                      className="h-full w-full object-cover opacity-30"
-                    />
-                  )}
-                  {!p.videoDone && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
-                        <p className="text-xs text-zinc-300">
-                          {!p.imageDone
-                            ? "Generating\u2026"
-                            : "Animating\u2026"}
-                        </p>
+                    {messages.map((m) => (
+                      <div key={m.id} className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[8px] font-bold uppercase ${m.userId === user.id ? "text-accent" : "text-muted"}`}
+                          >
+                            {m.userName}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-foreground break-words pl-0">{m.text}</p>
                       </div>
-                    </div>
-                  )}
-                  {p.videoDone && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <svg
-                        className="h-8 w-8 text-green-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                  )}
-                  <p className="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
-                    Scene {i + 1}
-                  </p>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      sendMessage();
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Message..."
+                      className="flex-1 min-w-0 rounded border border-border bg-surface px-2.5 py-1.5 text-[10px] text-foreground placeholder:text-muted/50 outline-none focus:border-accent/40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim()}
+                      className="rounded border border-accent bg-accent px-3 py-1.5 text-[9px] font-black uppercase text-background hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Send
+                    </button>
+                  </form>
                 </div>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-center gap-2">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-400 border-t-white" />
-              <p className="text-sm text-zinc-400">{stageLabel}</p>
-            </div>
+              </div>
+            </section>
           </div>
-        )}
-
-        {/* Result */}
-        {isDone && gen?.mergedVideoUrl && (
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black">
-            <video
-              src={gen.mergedVideoUrl}
-              autoPlay
-              loop
-              playsInline
-              controls
-              className="h-full w-full object-cover"
-            />
-          </div>
-        )}
-
-        {/* Error */}
-        {hasError && gen?.error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {gen.error}
-          </div>
-        )}
-
-        {/* Scene thumbnails */}
-        {!isDone && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-zinc-500">Target Scenes</p>
-            <div className="grid grid-cols-2 gap-3">
-              {SCENE_IMAGES.map((url, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-2"
-                >
-                  <img
-                    src={url}
-                    alt={`Target scene ${i + 1}`}
-                    className="h-14 w-14 rounded-lg object-cover"
-                  />
-                  <p className="text-xs text-zinc-400">Scene {i + 1}</p>
-                </div>
-              ))}
+          <div className="p-4 border-t border-border">
+            <div className="text-[9px] font-mono text-muted/40 uppercase tracking-tighter">
+              System_Node: TR-2938<br />
+              Enc: H.264_COLLAB
             </div>
           </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          {isIdle && !isDone && (
-            <button
-              onClick={generate}
-              disabled={!canGenerate}
-              className={`flex-1 rounded-xl py-3 text-sm font-semibold transition-opacity ${
-                canGenerate
-                  ? "bg-white text-black hover:opacity-90 active:opacity-80"
-                  : "cursor-not-allowed bg-zinc-800 text-zinc-500"
-              }`}
-            >
-              Generate
-              {roomState.characters.length > 0 && (
-                <span className="ml-1.5 text-zinc-500">
-                  ({roomState.characters.length} characters)
-                </span>
-              )}
-            </button>
-          )}
-
-          {isGenerating && (
-            <button
-              disabled
-              className="flex-1 cursor-not-allowed rounded-xl bg-zinc-800 py-3 text-sm font-medium text-zinc-500"
-            >
-              {stageLabel}
-            </button>
-          )}
-
-          {(isDone || hasError) && (
-            <button
-              onClick={resetGeneration}
-              className="flex-1 rounded-xl bg-white py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 active:opacity-80"
-            >
-              {isDone ? "Generate Again" : "Try Again"}
-            </button>
-          )}
-        </div>
+        </aside>
       </div>
+
+      <InviteModal roomId={roomId} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+
+      {/* Tailwind animation keyframes injected via style tag for simplicity in this file */}
+      <style jsx global>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 }

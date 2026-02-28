@@ -2,18 +2,17 @@ import { fal } from "@fal-ai/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getRoom, setGeneration, updatePipeline } from "@/lib/room-store";
 import { generateImageFromUrls } from "@/lib/gemini";
+import { getGenreById, GENRES } from "@/lib/genres";
 
 fal.config({ credentials: process.env.FAL_KEY! });
 
 const PREFIX = "[room-generate]";
 
-const SCENE_IMAGES = [
-  "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
-  "https://v3b.fal.media/files/b/0a904ff6/zh54kzzHSHF5K9G1LlTVb_nY4Pvu3d.png",
-];
+const DEFAULT_GENRE_ID = GENRES[0]?.id ?? "noir";
 
 async function runGeneration(
   roomId: string,
+  sceneImages: string[],
   imagePrompt?: string,
   videoPrompt?: string,
 ) {
@@ -35,7 +34,7 @@ async function runGeneration(
     characterUrls,
     outfits: outfitUrls.length,
     outfitUrls,
-    scenes: SCENE_IMAGES.length,
+    scenes: sceneImages.length,
     imagePrompt: imagePrompt || "(default)",
     videoPrompt: videoPrompt || "(default)",
   });
@@ -56,15 +55,15 @@ async function runGeneration(
 
   setGeneration(roomId, {
     stage: "generating-images",
-    pipelines: SCENE_IMAGES.map(() => ({ imageDone: false, videoDone: false })),
+    pipelines: sceneImages.map(() => ({ imageDone: false, videoDone: false })),
   });
 
-  console.log(PREFIX, `[stage=generating-images] starting ${SCENE_IMAGES.length} parallel image generations`);
+  console.log(PREFIX, `[stage=generating-images] starting ${sceneImages.length} parallel image generations`);
   const tImg = Date.now();
   const imageUrls = await Promise.all(
-    SCENE_IMAGES.map(async (sceneUrl, i) => {
+    sceneImages.map(async (sceneUrl, i) => {
       const tScene = Date.now();
-      console.log(PREFIX, `[image ${i + 1}/${SCENE_IMAGES.length}] starting, scene=${sceneUrl.slice(-40)}`);
+      console.log(PREFIX, `[image ${i + 1}/${sceneImages.length}] starting, scene=${sceneUrl.slice(-40)}`);
       try {
         const url = await generateImageFromUrls({
           characterUrls,
@@ -72,11 +71,11 @@ async function runGeneration(
           sceneImageUrl: sceneUrl,
           prompt: resolvedImagePrompt,
         });
-        console.log(PREFIX, `[image ${i + 1}/${SCENE_IMAGES.length}] done in ${Date.now() - tScene}ms → ${url}`);
+        console.log(PREFIX, `[image ${i + 1}/${sceneImages.length}] done in ${Date.now() - tScene}ms → ${url}`);
         updatePipeline(roomId, i, { imageDone: true, imageUrl: url });
         return url;
       } catch (err) {
-        console.error(PREFIX, `[image ${i + 1}/${SCENE_IMAGES.length}] FAILED after ${Date.now() - tScene}ms:`, err);
+        console.error(PREFIX, `[image ${i + 1}/${sceneImages.length}] FAILED after ${Date.now() - tScene}ms:`, err);
         throw err;
       }
     }),
@@ -87,7 +86,7 @@ async function runGeneration(
     stage: "generating-videos",
     pipelines:
       getRoom(roomId)?.generation?.pipelines ??
-      SCENE_IMAGES.map(() => ({ imageDone: true, videoDone: false })),
+      sceneImages.map(() => ({ imageDone: true, videoDone: false })),
   });
 
   console.log(PREFIX, `[stage=generating-videos] starting ${imageUrls.length} parallel video generations`);
@@ -130,7 +129,7 @@ async function runGeneration(
     stage: "merging",
     pipelines:
       getRoom(roomId)?.generation?.pipelines ??
-      SCENE_IMAGES.map(() => ({ imageDone: true, videoDone: true })),
+      sceneImages.map(() => ({ imageDone: true, videoDone: true })),
   });
 
   console.log(PREFIX, `[stage=merging] merging ${videoUrls.length} videos`, videoUrls);
@@ -154,7 +153,7 @@ async function runGeneration(
     stage: "done",
     pipelines:
       getRoom(roomId)?.generation?.pipelines ??
-      SCENE_IMAGES.map(() => ({ imageDone: true, videoDone: true })),
+      sceneImages.map(() => ({ imageDone: true, videoDone: true })),
     mergedVideoUrl: mergedUrl,
   });
 
@@ -188,17 +187,22 @@ export async function POST(
     );
   }
 
-  const { imagePrompt, videoPrompt } = await req.json().catch(() => ({}));
-  console.log(PREFIX, `POST room=${roomId} imagePrompt=${imagePrompt ?? "(none)"} videoPrompt=${videoPrompt ?? "(none)"}`);
+  const { imagePrompt, videoPrompt, genreId } = await req.json().catch(() => ({}));
+  const genre = getGenreById(genreId ?? DEFAULT_GENRE_ID) ?? getGenreById(DEFAULT_GENRE_ID);
+  const sceneImages = genre?.scenes ?? [];
+  if (sceneImages.length === 0) {
+    return NextResponse.json({ error: "No scenes for genre" }, { status: 400 });
+  }
+  console.log(PREFIX, `POST room=${roomId} genre=${genre?.name ?? genreId} imagePrompt=${imagePrompt ?? "(none)"} videoPrompt=${videoPrompt ?? "(none)"}`);
 
-  runGeneration(roomId, imagePrompt, videoPrompt).catch((err) => {
+  runGeneration(roomId, sceneImages, imagePrompt, videoPrompt).catch((err) => {
     const msg = err instanceof Error ? err.message : "Generation failed";
     console.error(PREFIX, `room=${roomId} generation FAILED:`, msg, err);
     setGeneration(roomId, {
       stage: "error",
       pipelines:
         getRoom(roomId)?.generation?.pipelines ??
-        SCENE_IMAGES.map(() => ({ imageDone: false, videoDone: false })),
+        sceneImages.map(() => ({ imageDone: false, videoDone: false })),
       error: msg,
     });
   });
