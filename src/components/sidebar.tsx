@@ -8,14 +8,14 @@ import { COOKIE_NAME } from "@/lib/auth";
 const NAV_ITEMS = [
   {
     href: "/",
-    label: "Scene Placer",
+    label: "Sequence",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -27,14 +27,14 @@ const NAV_ITEMS = [
   },
   {
     href: "/crew",
-    label: "Character Crew",
+    label: "Cast & Crew",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -49,11 +49,11 @@ const NAV_ITEMS = [
     label: "Wardrobe",
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-4 w-4"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={2}
       >
         <path
           strokeLinecap="round"
@@ -76,14 +76,14 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-dvh w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-      <div className="px-5 py-5">
-        <h2 className="text-sm font-bold tracking-tight text-white">
-          Scene Placer
+    <aside className="flex h-dvh w-48 shrink-0 flex-col border-r border-border bg-background">
+      <div className="px-4 py-6">
+        <h2 className="text-xs font-black tracking-[0.2em] text-accent uppercase">
+          Studio
         </h2>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
+      <nav className="flex flex-1 flex-col gap-0.5 px-2">
         {NAV_ITEMS.map((item) => {
           const active =
             item.href === "/"
@@ -93,11 +93,10 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-zinc-800 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-              }`}
+              className={`flex items-center gap-2.5 rounded px-3 py-2 text-[13px] font-medium transition-colors ${active
+                  ? "bg-surface text-accent"
+                  : "text-muted hover:bg-surface-hover hover:text-foreground"
+                }`}
             >
               {item.icon}
               {item.label}
@@ -107,18 +106,18 @@ export function Sidebar() {
       </nav>
 
       {user && (
-        <div className="border-t border-zinc-800 px-3 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-white">
-              {user.name.slice(-1)}
+        <div className="border-t border-border px-2 py-4">
+          <div className="flex items-center gap-3 px-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-surface border border-border text-[10px] font-bold text-foreground">
+              {user.name.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-zinc-200">{user.name}</p>
+              <p className="truncate text-xs font-semibold text-foreground">{user.name}</p>
               <button
                 onClick={logout}
-                className="text-xs text-zinc-500 hover:text-zinc-300"
+                className="text-[10px] text-muted hover:text-accent uppercase tracking-wider"
               >
-                Switch user
+                Sign Out
               </button>
             </div>
           </div>
