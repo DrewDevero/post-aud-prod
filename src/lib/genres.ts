@@ -10,6 +10,7 @@ export const GENRES: Genre[] = [
     name: "Noir",
     scenes: [
       "https://pocge3esja6nk0zk.public.blob.vercel-storage.com/BF0LFr1_xVCIhqE2wiNQq_CweiVRCC-cRjLFz1yMmeqKO7HvhGw5Rs3aPsdjq.png",
+      "https://v3b.fal.media/files/b/0a904ff6/zh54kzzHSHF5K9G1LlTVb_nY4Pvu3d.png",
     ],
   },
 ];
